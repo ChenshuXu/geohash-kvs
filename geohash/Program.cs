@@ -83,7 +83,38 @@ namespace geohash
                     database.Add(lat, lon);
                 }
             }
+            
+
+            path = "/Users/chenshuxu/Projects/geohash-kvs/geohash/crime.csv";
+            string[] lines2 = System.IO.File.ReadAllLines(path);
+            //Console.WriteLine(lines2[1]);
+            
+            for (int i = 1; i < lines2.Length; i++)
+            {
+                string line = lines2[i];
+                string[] columns = line.Split(',');
+                string LatStr = columns[14];
+                string LonStr = columns[15];
+                if (LatStr != "" && LonStr != "")
+                {
+                    double lat;
+                    double lon;
+                    //Console.WriteLine(LatStr + LonStr);
+                    // Filter out errors
+                    try
+                    {
+                        lat = Convert.ToDouble(LatStr);
+                        lon = Convert.ToDouble(LonStr);
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+                    database.Add(lat, lon);
+                }
+            }
             database.Display();
         }
+
     }
 }
