@@ -54,7 +54,7 @@ namespace geohash
 
         public static void CrimeDataTest()
         {
-            string path = "../../../Crimes_-_2019.csv";
+            string path = "../../../Resources/Crimes_-_2019.csv";
             DataBase database = new DataBase();
 
             string[] lines = System.IO.File.ReadAllLines(path);
@@ -85,7 +85,7 @@ namespace geohash
             }
             
 
-            path = "/Users/chenshuxu/Projects/geohash-kvs/geohash/crime.csv";
+            path = "../../../Resources/crime.csv";
             string[] lines2 = System.IO.File.ReadAllLines(path);
             //Console.WriteLine(lines2[1]);
             
