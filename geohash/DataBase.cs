@@ -2,6 +2,8 @@
 using System.Collections.Generic;
 using NGeoHash;
 using System.IO;
+using SharpKml.Dom;
+using SharpKml.Base;
 
 namespace geohash
 {
@@ -112,12 +114,12 @@ namespace geohash
             // Find west(left) end
             Coordinates leftCoor = MetersToCoordinate(latitude, longitude, radius, 270);
             string hashLeft = GeoHash.Encode(leftCoor.Lat, leftCoor.Lon, numberOfChars);
-            BoundingBox boxLeft = GeoHash.DecodeBbox(hashLeft);
+            NGeoHash.BoundingBox boxLeft = GeoHash.DecodeBbox(hashLeft);
 
             // Find east(right) end
             Coordinates rightCoor = MetersToCoordinate(latitude, longitude, radius, 90);
             string hashRight = GeoHash.Encode(rightCoor.Lat, rightCoor.Lon, numberOfChars);
-            BoundingBox boxRight = GeoHash.DecodeBbox(hashRight);
+            NGeoHash.BoundingBox boxRight = GeoHash.DecodeBbox(hashRight);
 
             // Find steps(left to right)
             double perLon = latLon.Error.Lon * 2; // box size in west-east direction
@@ -131,13 +133,13 @@ namespace geohash
             {
                 // Find current box
                 string currentBoxHash = GeoHash.Neighbor(hashLeft, new[] { 0, lon });
-                BoundingBox currentBox = GeoHash.DecodeBbox(currentBoxHash);
+                NGeoHash.BoundingBox currentBox = GeoHash.DecodeBbox(currentBoxHash);
 
                 // Find north(upper) end
                 // Find up neighbor
                 // Check if in range
                 int i = 0;
-                BoundingBox upBox = currentBox;
+                NGeoHash.BoundingBox upBox = currentBox;
                 string upBoxHash = currentBoxHash;
                 while (BoxInRange(upBox, latitude, longitude, radius))
                 {
@@ -151,7 +153,7 @@ namespace geohash
                 // Find south(down) end
                 // Find steps(north to south)
                 int j = 0;
-                BoundingBox downBox = currentBox;
+                NGeoHash.BoundingBox downBox = currentBox;
                 string downBoxHash = currentBoxHash;
                 while (BoxInRange(downBox, latitude, longitude, radius))
                 {
@@ -163,8 +165,6 @@ namespace geohash
                 }
                 //Console.WriteLine("one loop");
             }
-
-
 
             return hashList.ToArray();
         }
@@ -216,7 +216,7 @@ namespace geohash
             Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
             var c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
             var d = R * c;
-            return d * 1000.0; // meters
+            return Math.Abs(d * 1000.0); // meters
         }
 
         /**
@@ -225,19 +225,270 @@ namespace geohash
          *
          *
          */
-        public static Boolean BoxInRange( BoundingBox box, double lat1, double lon1, double distance )
+        public static Boolean BoxInRange(NGeoHash.BoundingBox box, double lat1, double lon1, double distance )
         {
-            // distance between centers
-            double middleLat = ( box.Maximum.Lat + box.Minimum.Lat ) / 2;
-            double middleLon = ( box.Maximum.Lon + box.Minimum.Lat ) / 2;
-            double dR = Measure( middleLat, middleLon, lat1, lon1 );
-
             // 4 rectangle vertex in circle
             double d1 = Measure( box.Maximum.Lat, box.Maximum.Lon, lat1, lon1 );
             double d2 = Measure( box.Maximum.Lat, box.Minimum.Lon, lat1, lon1 );
             double d3 = Measure( box.Minimum.Lat, box.Maximum.Lon, lat1, lon1 );
             double d4 = Measure( box.Minimum.Lat, box.Minimum.Lon, lat1, lon1 );
-            return ( d1 <= distance || d2 <= distance || d3 <= distance || d4 <= distance );
+            if ( d1 <= distance || d2 <= distance || d3 <= distance || d4 <= distance )
+            {
+                return true;
+            }
+
+            // distance between centers
+            double middleLat = ( box.Maximum.Lat + box.Minimum.Lat ) / 2;
+            double middleLon = ( box.Maximum.Lon + box.Minimum.Lat ) / 2;
+            double dR = Measure( middleLat, middleLon, lat1, lon1 );
+
+            double west = Measure(box.Minimum.Lat, box.Minimum.Lon, box.Maximum.Lat, box.Minimum.Lon);
+            double east = Measure(box.Minimum.Lat, box.Maximum.Lon, box.Maximum.Lat, box.Maximum.Lon);
+            double south = Measure(box.Minimum.Lat, box.Minimum.Lon, box.Minimum.Lat, box.Maximum.Lon);
+            double north = Measure(box.Maximum.Lat, box.Maximum.Lon, box.Maximum.Lat, box.Minimum.Lon);
+
+            double l1 = Math.Sqrt(Math.Pow(south / 2, 2) + Math.Pow(west / 2, 2)) + distance;
+            double l2 = Math.Sqrt(Math.Pow(south / 2, 2) + Math.Pow(east / 2, 2)) + distance;
+            double l3 = Math.Sqrt(Math.Pow(north / 2, 2) + Math.Pow(west / 2, 2)) + distance;
+            double l4 = Math.Sqrt(Math.Pow(north / 2, 2) + Math.Pow(east / 2, 2)) + distance;
+
+            if ( l1 <= dR || l2 <= dR || l3 <= dR || l4 <= dR)
+            {
+                //return true;
+            }
+
+            return false;
+        }
+
+        /**
+         * Draw bounding circle
+         * Generate kml from a list of boxhash
+         *
+         */
+        public static void GenerateKMLBoundingCircle( string[] hashList, double latitude, double longitude, double radius, string fileName )
+        {
+            string kmlStr = $@"<?xml version=""1.0"" encoding=""UTF-8""?>
+<kml xmlns=""http://www.opengis.net/kml/2.2"" >
+    <Document>
+        <name> Paths </name>
+        <Style id=""yellowLineGreenPoly"">
+            <LineStyle>
+                <color> 7f00ffff </color>
+                <width> 4 </width>
+            </LineStyle>
+            <PolyStyle>
+                <color> 7f00ff00 </color>
+            </PolyStyle>
+        </Style>
+        <Placemark>
+            <styleUrl>#yellowLineGreenPoly</styleUrl>
+            <MultiGeometry>";
+
+            foreach(string hash in hashList)
+            {
+                kmlStr += "\n";
+                kmlStr += @"            <LineString>
+                    <extrude> 1 </extrude >
+                    <tessellate> 1 </tessellate>
+                    <altitudeMode> absolute </altitudeMode>
+                        <coordinates> ";
+                var box = GeoHash.DecodeBbox(hash);
+
+                kmlStr += box.Maximum.Lon.ToString();
+                kmlStr += ",";
+                kmlStr += box.Maximum.Lat.ToString();
+                kmlStr += ",2357";
+                kmlStr += "\n";
+
+                kmlStr += box.Maximum.Lon.ToString();
+                kmlStr += ",";
+                kmlStr += box.Minimum.Lat.ToString();
+                kmlStr += ",2357";
+                kmlStr += "\n";
+
+                kmlStr += box.Minimum.Lon.ToString();
+                kmlStr += ",";
+                kmlStr += box.Minimum.Lat.ToString();
+                kmlStr += ",2357";
+                kmlStr += "\n";
+
+                kmlStr += box.Minimum.Lon.ToString();
+                kmlStr += ",";
+                kmlStr += box.Maximum.Lat.ToString();
+                kmlStr += ",2357";
+                kmlStr += "\n";
+
+                kmlStr += box.Maximum.Lon.ToString();
+                kmlStr += ",";
+                kmlStr += box.Maximum.Lat.ToString();
+                kmlStr += ",2357";
+                kmlStr += "\n";
+
+                kmlStr += @"                        </coordinates>
+            </LineString>";
+            }
+
+            kmlStr += "\n";
+            kmlStr += @"            <LineString>
+                    <extrude> 1 </extrude >
+                    <tessellate> 1 </tessellate>
+                    <altitudeMode> absolute </altitudeMode>
+                        <coordinates> ";
+
+            // Draw the circle
+            for (double degree = 0; degree < 360; degree += 0.5)
+            {
+                var coor = MetersToCoordinate(latitude, longitude, radius, degree);
+
+
+                kmlStr += coor.Lon.ToString();
+                kmlStr += ",";
+                kmlStr += coor.Lat.ToString();
+                kmlStr += ",2357";
+                kmlStr += "\n";
+
+
+            }
+            kmlStr += @"                        </coordinates>
+            </LineString>";
+
+            // Draw center
+            kmlStr += "<Point><coordinates>" +
+                longitude.ToString() + "," + latitude.ToString()
+                + "</coordinates></Point>";
+
+            kmlStr += @"
+            </MultiGeometry>
+        </Placemark>
+    </Document>
+</kml>";
+            using (StreamWriter sw = new StreamWriter(fileName + ".kml"))
+            {
+                sw.WriteLine(kmlStr);
+            }
+        }
+
+
+        /**
+         * Draw bounding boxes
+         * Generate kml from a list of boxhash
+         *
+         */
+        public static void GenerateKMLBoundingBoxes(string[] hashList, Coordinates coorMin, Coordinates coorMax, string fileName)
+        {
+            string kmlStr = $@"<?xml version=""1.0"" encoding=""UTF-8""?>
+<kml xmlns=""http://www.opengis.net/kml/2.2"" >
+    <Document>
+        <name> Paths </name>
+        <Style id=""yellowLineGreenPoly"">
+            <LineStyle>
+                <color> 7f00ffff </color>
+                <width> 4 </width>
+            </LineStyle>
+            <PolyStyle>
+                <color> 7f00ff00 </color>
+            </PolyStyle>
+        </Style>
+        <Placemark>
+            <styleUrl>#redLineGreenPoly</styleUrl>
+            <MultiGeometry>";
+
+            foreach (string hash in hashList)
+            {
+                //Console.WriteLine(hash+",");
+                kmlStr += "\n";
+                kmlStr += @"
+                <LineString>
+                    <extrude> 1 </extrude >
+                    <tessellate> 1 </tessellate>
+                    <altitudeMode> absolute </altitudeMode>
+                        <coordinates> ";
+                var box = GeoHash.DecodeBbox(hash);
+
+                kmlStr += box.Maximum.Lon.ToString();
+                kmlStr += ",";
+                kmlStr += box.Maximum.Lat.ToString();
+                kmlStr += ",2357";
+                kmlStr += "\n";
+
+                kmlStr += box.Maximum.Lon.ToString();
+                kmlStr += ",";
+                kmlStr += box.Minimum.Lat.ToString();
+                kmlStr += ",2357";
+                kmlStr += "\n";
+
+                kmlStr += box.Minimum.Lon.ToString();
+                kmlStr += ",";
+                kmlStr += box.Minimum.Lat.ToString();
+                kmlStr += ",2357";
+                kmlStr += "\n";
+
+                kmlStr += box.Minimum.Lon.ToString();
+                kmlStr += ",";
+                kmlStr += box.Maximum.Lat.ToString();
+                kmlStr += ",2357";
+                kmlStr += "\n";
+
+                kmlStr += box.Maximum.Lon.ToString();
+                kmlStr += ",";
+                kmlStr += box.Maximum.Lat.ToString();
+                kmlStr += ",2357";
+                kmlStr += "\n";
+
+                kmlStr += @"                        </coordinates>
+            </LineString>";
+            }
+
+            // Draw bounding box
+            kmlStr += "\n";
+            kmlStr += @"            <LineString>
+                    <extrude> 1 </extrude >
+                    <tessellate> 1 </tessellate>
+                    <altitudeMode> absolute </altitudeMode>
+                        <coordinates> ";
+
+            kmlStr += coorMin.Lon.ToString();
+            kmlStr += ",";
+            kmlStr += coorMin.Lat.ToString();
+            kmlStr += ",2357";
+            kmlStr += "\n";
+
+            kmlStr += coorMin.Lon.ToString();
+            kmlStr += ",";
+            kmlStr += coorMax.Lat.ToString();
+            kmlStr += ",2357";
+            kmlStr += "\n";
+
+            kmlStr += coorMax.Lon.ToString();
+            kmlStr += ",";
+            kmlStr += coorMax.Lat.ToString();
+            kmlStr += ",2357";
+            kmlStr += "\n";
+
+            kmlStr += coorMax.Lon.ToString();
+            kmlStr += ",";
+            kmlStr += coorMin.Lat.ToString();
+            kmlStr += ",2357";
+            kmlStr += "\n";
+
+            kmlStr += coorMin.Lon.ToString();
+            kmlStr += ",";
+            kmlStr += coorMin.Lat.ToString();
+            kmlStr += ",2357";
+            kmlStr += "\n";
+
+            kmlStr += @"                        </coordinates>
+            </LineString>";
+
+            kmlStr += @"
+            </MultiGeometry>
+        </Placemark>
+    </Document>
+</kml>";
+            using (StreamWriter sw = new StreamWriter(fileName + ".kml"))
+            {
+                sw.WriteLine(kmlStr);
+            }
         }
     }
 }

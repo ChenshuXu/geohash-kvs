@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using NGeoHash;
 
 namespace geohash
@@ -8,34 +9,12 @@ namespace geohash
     {
         static void Main(string[] args)
         {
-            var location = new
-            {
-                latitude = 41.732733557,
-                longitude = -87.551320357,
-            };
-            int level = 7;
-            double radius = 2000;
-            
 
-            var watch = System.Diagnostics.Stopwatch.StartNew();
-            string[] hashList = DataBase.Bcircle(location.latitude, location.longitude, radius, level);
-            watch.Stop();
-            var elapsedMs = watch.ElapsedMilliseconds;
-            foreach (var h in hashList)
-            {
-                Console.WriteLine(h);
-                //BoundingBox box2 = GeoHash.DecodeBbox(h);
-                //if (DataBase.BoxInRange(box2, location.latitude, location.longitude, radius))
-                //{
-                //    Console.WriteLine("yes");
-                //}
-                //else
-                //{
-                //    Console.WriteLine("no");
-                //}
-            }
+            Coordinates c = new Coordinates { Lat = 82.24806714, Lon = -30.75179211 };
+            int level = 3;
+            double radius = 160930;
 
-            var encoded = GeoHash.Encode(location.latitude, location.longitude, level);
+            var encoded = GeoHash.Encode(c.Lat, c.Lon, level - 2);
             Console.WriteLine("encoded = " + encoded);
 
             var decoded = GeoHash.Decode(encoded);
@@ -50,13 +29,36 @@ namespace geohash
             var maxLon = box.Maximum.Lon;
             var minLon = box.Minimum.Lon;
 
+            
             // Measure the box size in meters
             var oneSide = DataBase.Measure(maxLat, minLon, minLat, minLon);
             var anotherSide = DataBase.Measure(maxLat, maxLon, maxLat, minLon);
             Console.WriteLine("box size: " + oneSide + " * " + anotherSide);
             Console.WriteLine("radius " + radius + "m level " + level);
+
+
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            string[] hashList = DataBase.Bcircle(c.Lat, c.Lon, radius, level);
+            watch.Stop();
+            var elapsedMs = watch.ElapsedMilliseconds;
+
+            foreach (var h in hashList)
+            {
+                Console.WriteLine(h);
+            }
+
+            Console.WriteLine("box size: " + oneSide + " * " + anotherSide);
+            Console.WriteLine("radius " + radius + "m level " + level);
             Console.WriteLine("Time elapsed: " + elapsedMs+"ms | " + hashList.Length + " results");
+            DataBase.GenerateKMLBoundingCircle(hashList, c.Lat, c.Lon, radius, "box1");
+
+            Coordinates coor1 = new Coordinates { Lat = 83.97933143, Lon = -39.85722014 };
+            Coordinates coor2 = new Coordinates { Lat= 84.34431421, Lon = -20.49379031 };
+            string[] hashlist2 = GeoHash.Bboxes(coor1.Lat, coor1.Lon, coor2.Lat, coor2.Lon, level);
+            DataBase.GenerateKMLBoundingBoxes(hashlist2, coor1, coor2, "box2");
         }
+
+        
 
         public static void CrimeDataTest()
         {
