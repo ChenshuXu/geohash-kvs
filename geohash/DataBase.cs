@@ -2,8 +2,6 @@
 using System.Collections.Generic;
 using NGeoHash;
 using System.IO;
-using SharpKml.Dom;
-using SharpKml.Base;
 
 namespace geohash
 {
@@ -71,8 +69,6 @@ namespace geohash
 
         /**
          * Store dictionary in a file
-         *
-         *
          */
         public void Display()
         {
@@ -112,22 +108,20 @@ namespace geohash
 
             // Find left and right end
             // Find west(left) end
-            Coordinates leftCoor = MetersToCoordinate(latitude, longitude, radius, 270);
+            Coordinates leftCoor = DistanceToPoint(latitude, longitude, radius, 270);
             string hashLeft = GeoHash.Encode(leftCoor.Lat, leftCoor.Lon, numberOfChars);
             NGeoHash.BoundingBox boxLeft = GeoHash.DecodeBbox(hashLeft);
 
             // Find east(right) end
-            Coordinates rightCoor = MetersToCoordinate(latitude, longitude, radius, 90);
+            Coordinates rightCoor = DistanceToPoint(latitude, longitude, radius, 90);
             string hashRight = GeoHash.Encode(rightCoor.Lat, rightCoor.Lon, numberOfChars);
             NGeoHash.BoundingBox boxRight = GeoHash.DecodeBbox(hashRight);
 
-            // Find steps(left to right)
-            double perLon = latLon.Error.Lon * 2; // box size in west-east direction
+            // Find steps(from left to right)
+            double perLon = latLon.Error.Lon * 2; // box size(in degree) on west-east direction
             var lonStep = Math.Round((boxRight.Minimum.Lon - boxLeft.Minimum.Lon) / perLon);
 
-            double perLat = latLon.Error.Lat * 2; // box size in north–south direction
-
-            
+            double perLat = latLon.Error.Lat * 2; // box size(in dgree) on north–south direction
 
             for ( var lon = 0; lon <= lonStep; lon++ )
             {
@@ -143,7 +137,10 @@ namespace geohash
                 string upBoxHash = currentBoxHash;
                 while (BoxInRange(upBox, latitude, longitude, radius))
                 {
-                    hashList.Add(upBoxHash);
+                    if (!hashList.Contains(upBoxHash))
+                    {
+                        hashList.Add(upBoxHash);
+                    }
                     //Console.WriteLine("Add+ " + upBoxHash);
                     i++;
                     upBoxHash = GeoHash.Neighbor(currentBoxHash, new[] { i, 0 });
@@ -157,14 +154,33 @@ namespace geohash
                 string downBoxHash = currentBoxHash;
                 while (BoxInRange(downBox, latitude, longitude, radius))
                 {
-                    hashList.Add(downBoxHash);
+                    if (!hashList.Contains(downBoxHash))
+                    {
+                        hashList.Add(downBoxHash);
+                    }
                     //Console.WriteLine("Add- " + downBoxHash);
                     j--;
                     downBoxHash = GeoHash.Neighbor(currentBoxHash, new[] { j, 0 });
                     downBox = GeoHash.DecodeBbox(downBoxHash);
                 }
-                //Console.WriteLine("one loop");
             }
+
+            // Check each point on the circle, see if covers more box
+            // Find step length of radius
+            double stepOfRadius = FindMinSideLength(hashCenter) * 0.9;
+            // Find step of cricle, devide 360 degree to how many parts
+            double stepOfCircle = 360 / (Math.PI * 2 * radius / stepOfRadius);
+
+            for (double degree = 0; degree <= 360; degree += stepOfCircle)
+            {
+                Coordinates coor = DistanceToPoint(latitude, longitude, radius, degree);
+                string hash = GeoHash.Encode(coor.Lat, coor.Lon, numberOfChars);
+                if (!hashList.Contains(hash))
+                {
+                    hashList.Add(hash);
+                }
+            }
+            
 
             return hashList.ToArray();
         }
@@ -178,37 +194,34 @@ namespace geohash
          * @param {double} d (distance in meter)
          * @param {double} bearing (clockwise from north in degree)
          */
-        public static Coordinates MetersToCoordinate( double lat, double lon, double d, double brng )
+        public static Coordinates DistanceToPoint(double lat, double lon, double distance, double brng)
         {
-            double R = 6378137.0;
+            double radius = 6371000;
 
-            // convert to radian
-            double lat2 = lat * Math.PI / 180;
-            double lon2 = lon * Math.PI / 180;
-            double brng2 = brng * Math.PI / 180;
+            double δ = distance / radius; // angular distance in radians
+            double θ = brng * Math.PI / 180;
 
-            // Calculate and convert to degree
-            var lat3 = Math.Asin(Math.Sin(lat2) * Math.Cos(d / R) +
-                    Math.Cos(lat2) * Math.Sin(d / R) * Math.Cos(brng2)) * 180.0/Math.PI;
-            var lon3 = (lon2 + Math.Atan2(Math.Sin(brng2) * Math.Sin(d / R) * Math.Cos(lat2),
-                        Math.Cos(d / R) - Math.Sin(lat2) * Math.Sin(lat2))) * 180/Math.PI;
+            double φ1 = lat * Math.PI / 180, λ1 = lon * Math.PI / 180;
 
-            // Normalise to −180 +180
-            double lat4 = (lat3 + 540.0) % 360 - 180.0;
-            double lon4 = (lon3 + 540.0) % 360 - 180.0;
+            double sinφ2 = Math.Sin(φ1) * Math.Cos(δ) + Math.Cos(φ1) * Math.Sin(δ) * Math.Cos(θ);
+            double φ2 = Math.Asin(sinφ2);
+            double y = Math.Sin(θ) * Math.Sin(δ) * Math.Cos(φ1);
+            double x = Math.Cos(δ) - Math.Sin(φ1) * sinφ2;
+            double λ2 = λ1 + Math.Atan2(y, x);
 
-            return new NGeoHash.Coordinates { Lat = lat4, Lon = lon4 };
+            double lat3 = φ2 * 180 / Math.PI;
+            double lon3 = λ2 * 180 / Math.PI;
+
+            return new NGeoHash.Coordinates { Lat = lat3, Lon = lon3 };
         }
 
         /**
          * Measure the distance between two points
-         *
          * Return distance in meters
          */
         public static double Measure( double lat1, double lon1, double lat2, double lon2 )
         {
-            // generally used geo measurement function
-            var R = 6378.137; // Radius of earth in KM
+            var R = 6371; // Radius of earth in KM
             var dLat = lat2 * Math.PI / 180 - lat1 * Math.PI / 180;
             var dLon = lon2 * Math.PI / 180 - lon1 * Math.PI / 180;
             var a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2) +
@@ -219,11 +232,10 @@ namespace geohash
             return Math.Abs(d * 1000.0); // meters
         }
 
+
         /**
-         * ***Need improvement***
          * Check whether the box overlaps with circle
-         *
-         *
+         * Check the four corners of the box
          */
         public static Boolean BoxInRange(NGeoHash.BoundingBox box, double lat1, double lon1, double distance )
         {
@@ -232,38 +244,26 @@ namespace geohash
             double d2 = Measure( box.Maximum.Lat, box.Minimum.Lon, lat1, lon1 );
             double d3 = Measure( box.Minimum.Lat, box.Maximum.Lon, lat1, lon1 );
             double d4 = Measure( box.Minimum.Lat, box.Minimum.Lon, lat1, lon1 );
-            if ( d1 <= distance || d2 <= distance || d3 <= distance || d4 <= distance )
-            {
-                return true;
-            }
+            return d1 <= distance || d2 <= distance || d3 <= distance || d4 <= distance;
+        }
 
-            // distance between centers
-            double middleLat = ( box.Maximum.Lat + box.Minimum.Lat ) / 2;
-            double middleLon = ( box.Maximum.Lon + box.Minimum.Lat ) / 2;
-            double dR = Measure( middleLat, middleLon, lat1, lon1 );
-
+       /**
+        * Find the length of the shortest side of a box
+        */
+        public static double FindMinSideLength(string hash)
+        {
+            BoundingBox box = GeoHash.DecodeBbox(hash);
             double west = Measure(box.Minimum.Lat, box.Minimum.Lon, box.Maximum.Lat, box.Minimum.Lon);
             double east = Measure(box.Minimum.Lat, box.Maximum.Lon, box.Maximum.Lat, box.Maximum.Lon);
             double south = Measure(box.Minimum.Lat, box.Minimum.Lon, box.Minimum.Lat, box.Maximum.Lon);
             double north = Measure(box.Maximum.Lat, box.Maximum.Lon, box.Maximum.Lat, box.Minimum.Lon);
 
-            double l1 = Math.Sqrt(Math.Pow(south / 2, 2) + Math.Pow(west / 2, 2)) + distance;
-            double l2 = Math.Sqrt(Math.Pow(south / 2, 2) + Math.Pow(east / 2, 2)) + distance;
-            double l3 = Math.Sqrt(Math.Pow(north / 2, 2) + Math.Pow(west / 2, 2)) + distance;
-            double l4 = Math.Sqrt(Math.Pow(north / 2, 2) + Math.Pow(east / 2, 2)) + distance;
-
-            if ( l1 <= dR || l2 <= dR || l3 <= dR || l4 <= dR)
-            {
-                //return true;
-            }
-
-            return false;
+            return Math.Min(Math.Min(west, east), Math.Min(north, south));
         }
 
         /**
          * Draw bounding circle
          * Generate kml from a list of boxhash
-         *
          */
         public static void GenerateKMLBoundingCircle( string[] hashList, double latitude, double longitude, double radius, string fileName )
         {
@@ -338,7 +338,7 @@ namespace geohash
             // Draw the circle
             for (double degree = 0; degree < 360; degree += 0.5)
             {
-                var coor = MetersToCoordinate(latitude, longitude, radius, degree);
+                var coor = DistanceToPoint(latitude, longitude, radius, degree);
 
 
                 kmlStr += coor.Lon.ToString();
@@ -347,7 +347,7 @@ namespace geohash
                 kmlStr += ",2357";
                 kmlStr += "\n";
 
-
+                //Console.WriteLine(Measure(latitude, longitude, coor.Lat, coor.Lon));
             }
             kmlStr += @"                        </coordinates>
             </LineString>";

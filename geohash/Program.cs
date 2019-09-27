@@ -10,18 +10,18 @@ namespace geohash
         static void Main(string[] args)
         {
 
-            Coordinates c = new Coordinates { Lat = 82.24806714, Lon = -30.75179211 };
+            Coordinates c = new Coordinates { Lat = 86, Lon = -30.75179211 };
             int level = 3;
-            double radius = 160930;
+            double radius = 150000; // in meters
 
-            var encoded = GeoHash.Encode(c.Lat, c.Lon, level - 2);
+            Console.WriteLine("point latitude " + c.Lat + ", longitude " + c.Lon);
+            var encoded = GeoHash.Encode(c.Lat, c.Lon, level);
             Console.WriteLine("encoded = " + encoded);
 
             var decoded = GeoHash.Decode(encoded);
             var latitude = decoded.Coordinates.Lat;
-            Console.WriteLine("latitude = " + latitude);
             var longitude = decoded.Coordinates.Lon;
-            Console.WriteLine("longitude = " + longitude);
+            Console.WriteLine("decoded box latitude " + latitude + ", longitude " + longitude);
 
             BoundingBox box = GeoHash.DecodeBbox(encoded);
             var maxLat = box.Maximum.Lat;
@@ -29,14 +29,11 @@ namespace geohash
             var maxLon = box.Maximum.Lon;
             var minLon = box.Minimum.Lon;
 
-            
             // Measure the box size in meters
             var oneSide = DataBase.Measure(maxLat, minLon, minLat, minLon);
             var anotherSide = DataBase.Measure(maxLat, maxLon, maxLat, minLon);
-            Console.WriteLine("box size: " + oneSide + " * " + anotherSide);
-            Console.WriteLine("radius " + radius + "m level " + level);
 
-
+            // Bounding circle
             var watch = System.Diagnostics.Stopwatch.StartNew();
             string[] hashList = DataBase.Bcircle(c.Lat, c.Lon, radius, level);
             watch.Stop();
@@ -44,18 +41,21 @@ namespace geohash
 
             foreach (var h in hashList)
             {
-                Console.WriteLine(h);
+                // Console.WriteLine(h);
             }
 
-            Console.WriteLine("box size: " + oneSide + " * " + anotherSide);
-            Console.WriteLine("radius " + radius + "m level " + level);
-            Console.WriteLine("Time elapsed: " + elapsedMs+"ms | " + hashList.Length + " results");
-            DataBase.GenerateKMLBoundingCircle(hashList, c.Lat, c.Lon, radius, "box1");
+            Console.WriteLine("box size: " + oneSide + " meters * " + anotherSide + " meters");
+            Console.WriteLine("bounding circle radius " + radius + " meters, level " + level);
+            Console.WriteLine("Time elapsed: " + elapsedMs+" ms | " + hashList.Length + " results get");
+            string filename = "bounding circle" + c.Lat.ToString() + "-" + c.Lon.ToString() + "-" + radius.ToString() + "-" + level.ToString();
+            DataBase.GenerateKMLBoundingCircle(hashList, c.Lat, c.Lon, radius, filename);
+            Console.WriteLine("save as file name " + filename);
 
+            // Bounding box
             Coordinates coor1 = new Coordinates { Lat = 83.97933143, Lon = -39.85722014 };
-            Coordinates coor2 = new Coordinates { Lat= 84.34431421, Lon = -20.49379031 };
+            Coordinates coor2 = new Coordinates { Lat= 84.44481747, Lon = -20.60826777 };
             string[] hashlist2 = GeoHash.Bboxes(coor1.Lat, coor1.Lon, coor2.Lat, coor2.Lon, level);
-            DataBase.GenerateKMLBoundingBoxes(hashlist2, coor1, coor2, "box2");
+            DataBase.GenerateKMLBoundingBoxes(hashlist2, coor1, coor2, "bounding box");
         }
 
         
