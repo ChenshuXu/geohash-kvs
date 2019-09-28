@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using NGeoHash;
+using KML;
 
 namespace geohash
 {
@@ -25,7 +26,7 @@ namespace geohash
             Coordinates coor1 = new Coordinates { Lat = 41.85776407, Lon = -87.73420671 };
             Coordinates coor2 = new Coordinates { Lat = 41.89993156, Lon = -87.60380377 };
             string[] hashlist2 = GeoHash.Bboxes(coor1.Lat, coor1.Lon, coor2.Lat, coor2.Lon, mLevel);
-            DataBase.GenerateKMLBoundingBoxes(hashlist2, coor1, coor2, "bounding box");
+            KMLGenerator.GenerateKMLBoundingBoxes(hashlist2, coor1, coor2, "bounding box");
         }
 
         static void BoundingCircleTest()
@@ -66,7 +67,7 @@ namespace geohash
             Console.WriteLine("bounding circle radius " + mRadius + " meters, level " + mLevel);
             Console.WriteLine("Time elapsed: " + elapsedMs + " ms | " + hashList.Length + " results get");
             string filename = "bounding circle" + c.Lat.ToString() + "-" + c.Lon.ToString() + "-" + mRadius.ToString() + "-" + mLevel.ToString();
-            DataBase.GenerateKMLBoundingCircle(hashList, c.Lat, c.Lon, mRadius, filename);
+            KMLGenerator.GenerateKMLBoundingCircle(hashList, c.Lat, c.Lon, mRadius, filename);
             Console.WriteLine("save as file name " + filename);
         }
 
@@ -83,14 +84,15 @@ namespace geohash
             watch.Stop();
             var elapsedMs = watch.ElapsedMilliseconds;
             Console.WriteLine("BcircleCoordinates, Time elapsed: " + elapsedMs + " ms | " + c.Length + " results get");
-            database.GenerateKMLcoordinates(c, "circle coordinates");
+            KMLGenerator.GenerateKMLcoordinates(c, "circle coordinates");
+            
 
             var watch2 = System.Diagnostics.Stopwatch.StartNew();
             var c2 = database.BboxCoordinates(41.85776407, -87.73420671, 41.89993156, -87.60380377, mLevel);
             watch2.Stop();
             var elapsedMs2 = watch2.ElapsedMilliseconds;
             Console.WriteLine("BboxCoordinates, Time elapsed: " + elapsedMs2 + " ms | " + c2.Length + " results get");
-            database.GenerateKMLcoordinates(c2, "box coordinates");
+            KMLGenerator.GenerateKMLcoordinates(c2, "box coordinates");
         }
 
         static void AddDatasetSmall(DataBase database)

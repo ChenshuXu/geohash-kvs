@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using NGeoHash;
 using System.IO;
+using System.Linq;
 
 namespace geohash
 {
@@ -185,12 +186,13 @@ namespace geohash
             return hashList.ToArray();
         }
 
-        public Coordinates[] BcircleCoordinates(double latitude, double longitude, double radius, int numberOfChars = 9)
+        public Coordinates[] BcircleCoordinates(double latitude, double longitude, double radius, int numberOfChars = 9, int limit = 0)
         {
             var coorList = new List<Coordinates>();
             string[] hashList = Bcircle(latitude, longitude, radius, numberOfChars);
             foreach (string hash in hashList)
             {
+                // TODO: search all level or search current level only?
                 Coordinates[] coors = GetCoordinates(hash);
                 BoundingBox box = GeoHash.DecodeBbox(hash);
 
@@ -215,7 +217,15 @@ namespace geohash
                 }
             }
 
-            return coorList.ToArray();
+            if (limit == 0)
+            {
+                return coorList.ToArray();
+            }
+            else
+            {
+                // TODO: search the cloest points
+                return coorList.ToArray();
+            }
         }
 
         public Coordinates[] BboxCoordinates(double minLat, double minLon, double maxLat, double maxLon, int numberOfChars = 9)
@@ -225,6 +235,7 @@ namespace geohash
 
             foreach (string hash in hashList)
             {
+                // TODO: search all level or search current level only?
                 Coordinates[] coors = GetCoordinates(hash);
                 BoundingBox box = GeoHash.DecodeBbox(hash);
 
@@ -253,8 +264,8 @@ namespace geohash
         }
 
         /**
-         * Get all coordinates in a box
-         * ***Not finished***
+         * Get all coordinates in all levels
+         * 
          */
         private Coordinates[] GetCoordinatesAll(string hash)
         {
@@ -266,12 +277,26 @@ namespace geohash
                 if (FullList.Contains(hash))
                 {
                     // find all hash start with hash
+
+                    int level = hash.Length;
+                    foreach(string key in Dict.Keys)
+                    {
+                        if(key.Length>=level && key.Substring(0,level) == hash)
+                        {
+                            coorList.AddRange(Dict[key]);
+                        }
+                    }
                 }
             }
 
-            return coorList.ToArray();
+            //TODO: distince is not good if there are some real duplicates in database
+            return coorList.Distinct().ToArray();
         }
 
+        /**
+         * Get all coordinates in this level
+         * 
+         */
         private Coordinates[] GetCoordinates(string hash)
         {
             if (Dict.ContainsKey(hash))
@@ -280,6 +305,7 @@ namespace geohash
             }
             return new Coordinates[] { };
         }
+
         /**
          * Convert meters to coordinate in direction
          *
@@ -384,316 +410,6 @@ namespace geohash
             double north = Measure(box.Maximum.Lat, box.Maximum.Lon, box.Maximum.Lat, box.Minimum.Lon);
 
             return Math.Min(Math.Min(west, east), Math.Min(north, south));
-        }
-
-        /**
-         * Draw bounding circle
-         * Generate kml from a list of boxhash
-         */
-        public static void GenerateKMLBoundingCircle( string[] hashList, double latitude, double longitude, double radius, string fileName )
-        {
-            string kmlStr = $@"<?xml version=""1.0"" encoding=""UTF-8""?>
-<kml xmlns=""http://www.opengis.net/kml/2.2"" >
-    <Document>
-        <name>BoundingCircle</name>
-        <Style id=""yellowLineGreenPoly"">
-            <LineStyle>
-                <color> 7f00ffff </color>
-                <width> 4 </width>
-            </LineStyle>
-            <PolyStyle>
-                <color> 7f00ff00 </color>
-            </PolyStyle>
-        </Style>
-        <Placemark>
-            <styleUrl>#yellowLineGreenPoly</styleUrl>
-            <MultiGeometry>";
-
-            foreach(string hash in hashList)
-            {
-                kmlStr += "\n";
-                kmlStr += @"            <LineString>
-                    <extrude> 1 </extrude >
-                    <tessellate> 1 </tessellate>
-                    <altitudeMode> absolute </altitudeMode>
-                        <coordinates> ";
-                var box = GeoHash.DecodeBbox(hash);
-
-                kmlStr += box.Maximum.Lon.ToString();
-                kmlStr += ",";
-                kmlStr += box.Maximum.Lat.ToString();
-                kmlStr += ",20";
-                kmlStr += "\n";
-
-                kmlStr += box.Maximum.Lon.ToString();
-                kmlStr += ",";
-                kmlStr += box.Minimum.Lat.ToString();
-                kmlStr += ",20";
-                kmlStr += "\n";
-
-                kmlStr += box.Minimum.Lon.ToString();
-                kmlStr += ",";
-                kmlStr += box.Minimum.Lat.ToString();
-                kmlStr += ",20";
-                kmlStr += "\n";
-
-                kmlStr += box.Minimum.Lon.ToString();
-                kmlStr += ",";
-                kmlStr += box.Maximum.Lat.ToString();
-                kmlStr += ",20";
-                kmlStr += "\n";
-
-                kmlStr += box.Maximum.Lon.ToString();
-                kmlStr += ",";
-                kmlStr += box.Maximum.Lat.ToString();
-                kmlStr += ",20";
-                kmlStr += "\n";
-
-                kmlStr += @"                        </coordinates>
-            </LineString>";
-            }
-
-            kmlStr += "\n";
-            kmlStr += @"            <LineString>
-                    <extrude> 1 </extrude >
-                    <tessellate> 1 </tessellate>
-                    <altitudeMode> absolute </altitudeMode>
-                        <coordinates> ";
-
-            // Draw the circle
-            for (double degree = 0; degree < 360; degree += 0.5)
-            {
-                var coor = DistanceToPoint(latitude, longitude, radius, degree);
-
-
-                kmlStr += coor.Lon.ToString();
-                kmlStr += ",";
-                kmlStr += coor.Lat.ToString();
-                kmlStr += ",20";
-                kmlStr += "\n";
-
-                //Console.WriteLine(Measure(latitude, longitude, coor.Lat, coor.Lon));
-            }
-            kmlStr += @"                        </coordinates>
-            </LineString>";
-
-            // Draw center
-            kmlStr += "<Point><coordinates>" +
-                longitude.ToString() + "," + latitude.ToString()
-                + "</coordinates></Point>";
-
-            kmlStr += @"
-            </MultiGeometry>
-        </Placemark>
-    </Document>
-</kml>";
-            using (StreamWriter sw = new StreamWriter(fileName + ".kml"))
-            {
-                sw.WriteLine(kmlStr);
-            }
-        }
-
-        /**
-         * Draw bounding boxes
-         * Generate kml from a list of boxhash
-         */
-        public static void GenerateKMLBoundingBoxes(string[] hashList, Coordinates coorMin, Coordinates coorMax, string fileName)
-        {
-            string kmlStr = $@"<?xml version=""1.0"" encoding=""UTF-8""?>
-<kml xmlns=""http://www.opengis.net/kml/2.2"" >
-    <Document>
-        <name>BoundingBoxes</name>
-        <Style id=""yellowLineGreenPoly"">
-            <LineStyle>
-                <color> 7f00ffff </color>
-                <width> 4 </width>
-            </LineStyle>
-            <PolyStyle>
-                <color> 7f00ff00 </color>
-            </PolyStyle>
-        </Style>
-        <Placemark>
-            <styleUrl>#redLineGreenPoly</styleUrl>
-            <MultiGeometry>";
-
-            foreach (string hash in hashList)
-            {
-                //Console.WriteLine(hash+",");
-                kmlStr += "\n";
-                kmlStr += @"
-                <LineString>
-                    <extrude> 1 </extrude >
-                    <tessellate> 1 </tessellate>
-                    <altitudeMode> absolute </altitudeMode>
-                        <coordinates> ";
-                var box = GeoHash.DecodeBbox(hash);
-
-                kmlStr += box.Maximum.Lon.ToString();
-                kmlStr += ",";
-                kmlStr += box.Maximum.Lat.ToString();
-                kmlStr += ",20";
-                kmlStr += "\n";
-
-                kmlStr += box.Maximum.Lon.ToString();
-                kmlStr += ",";
-                kmlStr += box.Minimum.Lat.ToString();
-                kmlStr += ",20";
-                kmlStr += "\n";
-
-                kmlStr += box.Minimum.Lon.ToString();
-                kmlStr += ",";
-                kmlStr += box.Minimum.Lat.ToString();
-                kmlStr += ",20";
-                kmlStr += "\n";
-
-                kmlStr += box.Minimum.Lon.ToString();
-                kmlStr += ",";
-                kmlStr += box.Maximum.Lat.ToString();
-                kmlStr += ",20";
-                kmlStr += "\n";
-
-                kmlStr += box.Maximum.Lon.ToString();
-                kmlStr += ",";
-                kmlStr += box.Maximum.Lat.ToString();
-                kmlStr += ",20";
-                kmlStr += "\n";
-
-                kmlStr += @"                        </coordinates>
-            </LineString>";
-            }
-
-            // Draw bounding box
-            kmlStr += "\n";
-            kmlStr += @"            <LineString>
-                    <extrude> 1 </extrude >
-                    <tessellate> 1 </tessellate>
-                    <altitudeMode> absolute </altitudeMode>
-                        <coordinates> ";
-
-            kmlStr += coorMin.Lon.ToString();
-            kmlStr += ",";
-            kmlStr += coorMin.Lat.ToString();
-            kmlStr += ",20";
-            kmlStr += "\n";
-
-            kmlStr += coorMin.Lon.ToString();
-            kmlStr += ",";
-            kmlStr += coorMax.Lat.ToString();
-            kmlStr += ",20";
-            kmlStr += "\n";
-
-            kmlStr += coorMax.Lon.ToString();
-            kmlStr += ",";
-            kmlStr += coorMax.Lat.ToString();
-            kmlStr += ",20";
-            kmlStr += "\n";
-
-            kmlStr += coorMax.Lon.ToString();
-            kmlStr += ",";
-            kmlStr += coorMin.Lat.ToString();
-            kmlStr += ",20";
-            kmlStr += "\n";
-
-            kmlStr += coorMin.Lon.ToString();
-            kmlStr += ",";
-            kmlStr += coorMin.Lat.ToString();
-            kmlStr += ",20";
-            kmlStr += "\n";
-
-            kmlStr += @"                        </coordinates>
-            </LineString>";
-
-            kmlStr += @"
-            </MultiGeometry>
-        </Placemark>
-    </Document>
-</kml>";
-            using (StreamWriter sw = new StreamWriter(fileName + ".kml"))
-            {
-                sw.WriteLine(kmlStr);
-            }
-        }
-
-        /**
-         * Draw all coordinates
-         */
-        public void GenerateKMLcoordinates(Coordinates[] coordinates, string fileName)
-        {
-            string kmlStr = $@"<?xml version=""1.0"" encoding=""UTF-8""?>
-<kml xmlns=""http://www.opengis.net/kml/2.2"" >
-    <Document>
-        <name>Coordinates</name>
-        <Style id=""yellowLineGreenPoly"">
-            <LineStyle>
-                <color> 7f00ffff </color>
-                <width> 4 </width>
-            </LineStyle>
-            <PolyStyle>
-                <color> 7f00ff00 </color>
-            </PolyStyle>
-        </Style>
-        <Placemark>
-            <styleUrl>#yellowLineGreenPoly</styleUrl>
-            <MultiGeometry>";
-
-            foreach(Coordinates c in coordinates)
-            {
-                kmlStr += "\n";
-                kmlStr += "<Point><coordinates>";
-                kmlStr += c.Lon + "," + c.Lat + "," + "2700";
-                kmlStr += "</coordinates></Point>";
-            }
-
-            kmlStr += @"
-            </MultiGeometry>
-        </Placemark>
-    </Document>
-</kml>";
-            using (StreamWriter sw = new StreamWriter(fileName + ".kml"))
-            {
-                sw.WriteLine(kmlStr);
-            }
-        }
-
-        public void GenerateKMLallCoordinates(string fileName)
-        {
-            string kmlStr = $@"<?xml version=""1.0"" encoding=""UTF-8""?>
-<kml xmlns=""http://www.opengis.net/kml/2.2"" >
-    <Document>
-        <name>All Coordinates</name>
-        <Style id=""yellowLineGreenPoly"">
-            <LineStyle>
-                <color> 7f00ffff </color>
-                <width> 4 </width>
-            </LineStyle>
-            <PolyStyle>
-                <color> 7f00ff00 </color>
-            </PolyStyle>
-        </Style>
-        <Placemark>
-            <styleUrl>#yellowLineGreenPoly</styleUrl>
-            <MultiGeometry>";
-
-            foreach (var v in Dict.Values)
-            {
-                foreach (Coordinates c in v)
-                {
-                    kmlStr += "\n";
-                    kmlStr += "<Point><coordinates>";
-                    kmlStr += c.Lon + "," + c.Lat + "," + "2700";
-                    kmlStr += "</coordinates></Point>";
-                }
-            }
-
-            kmlStr += @"
-            </MultiGeometry>
-        </Placemark>
-    </Document>
-</kml>";
-            using (StreamWriter sw = new StreamWriter(fileName + ".kml"))
-            {
-                sw.WriteLine(kmlStr);
-            }
         }
     }
 }
