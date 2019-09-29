@@ -244,10 +244,11 @@ namespace geohash
                 if (BoxAllInCircleRange(box, latitude, longitude, radius))
                 {
                     // All covered box
-                    foreach (Coordinates c in coors)
-                    {
-                        coorList.Add(c);
-                    }
+                    coorList.AddRange(coors);
+                    //foreach (Coordinates c in coors)
+                    //{
+                    //    coorList.Add(c);
+                    //}
                 }
                 else
                 {
@@ -302,10 +303,11 @@ namespace geohash
                 if (BoxInBoxRange(box, minLat, minLon, maxLat, maxLon))
                 {
                     // All covered box
-                    foreach (Coordinates c in coors)
-                    {
-                        coorList.Add(c);
-                    }
+                    coorList.AddRange(coors);
+                    //foreach (Coordinates c in coors)
+                    //{
+                    //    coorList.Add(c);
+                    //}
                 }
                 else
                 {

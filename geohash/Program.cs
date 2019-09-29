@@ -10,26 +10,30 @@ namespace geohash
     {
         static double mLat = 41.87476071;
         static double mLon = -87.67198792;
-        static int mLevel = 5;
+        static int mLevel = 6;
         static double mRadius = 5000;
 
         static void Main(string[] args)
         {
+            CrimeDataTest();
             BoundingBoxTest();
             BoundingCircleTest();
-            CrimeDataTest();
         }
 
-        static void BoundingBoxTest()
+        public static void BoundingBoxTest()
         {
             // Bounding box
             Coordinates coor1 = new Coordinates { Lat = 41.85776407, Lon = -87.73420671 };
             Coordinates coor2 = new Coordinates { Lat = 41.89993156, Lon = -87.60380377 };
-            string[] hashlist2 = GeoHash.Bboxes(coor1.Lat, coor1.Lon, coor2.Lat, coor2.Lon, mLevel);
-            KMLGenerator.GenerateKMLBoundingBoxes(hashlist2, coor1, coor2, "bounding box");
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            string[] hashlist = GeoHash.Bboxes(coor1.Lat, coor1.Lon, coor2.Lat, coor2.Lon, mLevel);
+            watch.Stop();
+            var elapsedMs = watch.ElapsedMilliseconds;
+            Console.WriteLine("Get bounding box, time elapsed: " + elapsedMs + " ms | " + hashlist.Length + " results get");
+            KMLGenerator.GenerateKMLBoundingBoxes(hashlist, coor1, coor2, "bounding box");
         }
 
-        static void BoundingCircleTest()
+        public static void BoundingCircleTest()
         {
             Coordinates c = new Coordinates { Lat = mLat, Lon = mLon };
 
@@ -65,7 +69,7 @@ namespace geohash
 
             Console.WriteLine("box size: " + oneSide + " meters * " + anotherSide + " meters");
             Console.WriteLine("bounding circle radius " + mRadius + " meters, level " + mLevel);
-            Console.WriteLine("Time elapsed: " + elapsedMs + " ms | " + hashList.Length + " results get");
+            Console.WriteLine("Get bounding circle, time elapsed: " + elapsedMs + " ms | " + hashList.Length + " results get");
             string filename = "bounding circle" + c.Lat.ToString() + "-" + c.Lon.ToString() + "-" + mRadius.ToString() + "-" + mLevel.ToString();
             KMLGenerator.GenerateKMLBoundingCircle(hashList, c.Lat, c.Lon, mRadius, filename);
             Console.WriteLine("save as file name " + filename);
@@ -74,6 +78,7 @@ namespace geohash
         public static void CrimeDataTest()
         {
             DataBase database = new DataBase();
+            // TODO: takes 34 seconds for load dataset1
             var watch0 = System.Diagnostics.Stopwatch.StartNew();
             //AddDatasetSmall(database);
             AddDataset1(database);
@@ -81,6 +86,16 @@ namespace geohash
             watch0.Stop();
             Console.WriteLine("Process data takes " + watch0.ElapsedMilliseconds + " ms");
             //database.Display();
+
+            ///
+            /// Test get coordinates in bounding box
+            /// TODO: search coordinates in bbox take much more time than searching in bcircle
+            var watch2 = System.Diagnostics.Stopwatch.StartNew();
+            var c2 = database.BboxCoordinates(41.85776407, -87.73420671, 41.89993156, -87.60380377, mLevel);
+            watch2.Stop();
+            var elapsedMs2 = watch2.ElapsedMilliseconds;
+            Console.WriteLine("BboxCoordinates, Time elapsed: " + elapsedMs2 + " ms | " + c2.Length + " results get");
+            KMLGenerator.GenerateKMLcoordinates(c2, "box coordinates");
 
             ///
             /// Test get coordinates in bounding circle
@@ -92,15 +107,7 @@ namespace geohash
             Console.WriteLine("BcircleCoordinates, Time elapsed: " + elapsedMs + " ms | " + c.Length + " results get");
             KMLGenerator.GenerateKMLcoordinates(c, "circle coordinates");
 
-            ///
-            /// Test get coordinates in bounding box
-            /// 
-            var watch2 = System.Diagnostics.Stopwatch.StartNew();
-            var c2 = database.BboxCoordinates(41.85776407, -87.73420671, 41.89993156, -87.60380377, mLevel);
-            watch2.Stop();
-            var elapsedMs2 = watch2.ElapsedMilliseconds;
-            Console.WriteLine("BboxCoordinates, Time elapsed: " + elapsedMs2 + " ms | " + c2.Length + " results get");
-            KMLGenerator.GenerateKMLcoordinates(c2, "box coordinates");
+            
         }
 
         static void AddDatasetSmall(DataBase database)
