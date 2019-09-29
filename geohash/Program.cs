@@ -74,16 +74,19 @@ namespace geohash
         public static void CrimeDataTest()
         {
             DataBase database = new DataBase();
+            var watch0 = System.Diagnostics.Stopwatch.StartNew();
             //AddDatasetSmall(database);
             AddDataset1(database);
             //AddDataset2(database);
+            watch0.Stop();
+            Console.WriteLine("Process data takes " + watch0.ElapsedMilliseconds + " ms");
             //database.Display();
 
             ///
             /// Test get coordinates in bounding circle
             /// 
             var watch = System.Diagnostics.Stopwatch.StartNew();
-            var c = database.BcircleCoordinates(mLat, mLon, mRadius, mLevel, 1000);
+            var c = database.BcircleCoordinates(mLat, mLon, mRadius, mLevel);
             watch.Stop();
             var elapsedMs = watch.ElapsedMilliseconds;
             Console.WriteLine("BcircleCoordinates, Time elapsed: " + elapsedMs + " ms | " + c.Length + " results get");

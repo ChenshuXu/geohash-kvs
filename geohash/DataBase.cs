@@ -16,7 +16,7 @@ namespace geohash
         private int maxCoordinatesInValue = 1000;
         private int maxNumberOfChar = 9;
 
-        public void Add( double latitude, double longitude, int numberOfChars = 1 )
+        public void Add2( double latitude, double longitude, int numberOfChars = 1 )
         {
             // Get the key
             string key = GeoHash.Encode(latitude, longitude, numberOfChars);
@@ -59,14 +59,48 @@ namespace geohash
                     // Move current level to the deeper level
                     foreach (var coor in Dict[key])
                     {
-                        Add(coor.Lat, coor.Lon, numberOfChars + 1);
+                        Add2(coor.Lat, coor.Lon, numberOfChars + 1);
                     }
                 }
 
                 // Calculate one more level
-                Add(latitude, longitude, numberOfChars + 1);
+                Add2(latitude, longitude, numberOfChars + 1);
             }
         }
+
+        public void Add(double latitude, double longitude)
+        {
+            for (int numberOfChars = 1; numberOfChars <= maxNumberOfChar; numberOfChars++)
+            {
+                // Get the key
+                string key = GeoHash.Encode(latitude, longitude, numberOfChars);
+                // Get the value
+                Coordinates coordinate = new Coordinates { Lat = latitude, Lon = longitude };
+
+                // First entry
+                if (!Dict.ContainsKey(key))
+                {
+                    List<Coordinates> value = new List<Coordinates> { coordinate };
+                    Dict.Add(key, value);
+                    //Console.WriteLine("Add new key " + key);
+                    continue;
+                }
+
+                if (Dict.ContainsKey(key) && Dict[key].Count < maxCoordinatesInValue)
+                {
+                    Dict[key].Add(coordinate);
+                    //Console.WriteLine("Add existent key " + key + ", " + Dict[key].Count);
+                    continue;
+                }
+
+                if (numberOfChars >= maxNumberOfChar)
+                {
+                    Dict[key].Add(coordinate);
+                    //Console.WriteLine("Add existent key " + key + ", " + Dict[key].Count);
+                }
+            }
+        }
+
 
         /**
          * Store dictionary in a file
