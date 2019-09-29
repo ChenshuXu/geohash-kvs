@@ -58,10 +58,10 @@ namespace geohash
             watch.Stop();
             var elapsedMs = watch.ElapsedMilliseconds;
 
-            foreach (var h in hashList)
-            {
-                // Console.WriteLine(h);
-            }
+            //foreach (var h in hashList)
+            //{
+            //    Console.WriteLine(h);
+            //}
 
             Console.WriteLine("box size: " + oneSide + " meters * " + anotherSide + " meters");
             Console.WriteLine("bounding circle radius " + mRadius + " meters, level " + mLevel);
@@ -77,16 +77,21 @@ namespace geohash
             //AddDatasetSmall(database);
             AddDataset1(database);
             //AddDataset2(database);
-
             //database.Display();
+
+            ///
+            /// Test get coordinates in bounding circle
+            /// 
             var watch = System.Diagnostics.Stopwatch.StartNew();
-            var c = database.BcircleCoordinates(mLat, mLon, mRadius, mLevel);
+            var c = database.BcircleCoordinates(mLat, mLon, mRadius, mLevel, 1000);
             watch.Stop();
             var elapsedMs = watch.ElapsedMilliseconds;
             Console.WriteLine("BcircleCoordinates, Time elapsed: " + elapsedMs + " ms | " + c.Length + " results get");
             KMLGenerator.GenerateKMLcoordinates(c, "circle coordinates");
-            
 
+            ///
+            /// Test get coordinates in bounding box
+            /// 
             var watch2 = System.Diagnostics.Stopwatch.StartNew();
             var c2 = database.BboxCoordinates(41.85776407, -87.73420671, 41.89993156, -87.60380377, mLevel);
             watch2.Stop();

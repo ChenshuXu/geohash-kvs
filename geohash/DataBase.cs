@@ -186,6 +186,17 @@ namespace geohash
             return hashList.ToArray();
         }
 
+        /**
+        * Bounding Circle Coordinates
+        *
+        * Return all coordinates covered by the circle in numberOfChars
+        * @param {double} lat
+        * @param {double} lon
+        * @param {double} radius in meters
+        * @param {int} numberOfChars
+        * @param {int} maximum number of coordinates returns
+        * @returns {Coordinates[]}
+        */
         public Coordinates[] BcircleCoordinates(double latitude, double longitude, double radius, int numberOfChars = 9, int limit = 0)
         {
             var coorList = new List<Coordinates>();
@@ -221,13 +232,28 @@ namespace geohash
             {
                 return coorList.ToArray();
             }
-            else
+
+            coorList.Sort((x, y) => Measure(x.Lat, x.Lon, latitude, longitude).CompareTo(Measure(y.Lat, y.Lon, latitude, longitude)));
+
+            if (coorList.Count >= limit)
             {
-                // TODO: search the cloest points
-                return coorList.ToArray();
+                return coorList.GetRange(0, limit).ToArray();
             }
+
+            return coorList.ToArray();
         }
 
+        /**
+        * Bounding Box Coordinates
+        *
+        * Return all coordinates covered by the box in numberOfChars
+        * @param {double} minLat
+        * @param {double} minLon
+        * @param {double} maxLat
+        * @param {double} maxLon
+        * @param {int} numberOfChars
+        * @returns {Coordinates[]}
+        */
         public Coordinates[] BboxCoordinates(double minLat, double minLon, double maxLat, double maxLon, int numberOfChars = 9)
         {
             var coorList = new List<Coordinates>();
@@ -294,7 +320,7 @@ namespace geohash
         }
 
         /**
-         * Get all coordinates in this level
+         * Get all coordinates in this level only
          * 
          */
         private Coordinates[] GetCoordinates(string hash)
