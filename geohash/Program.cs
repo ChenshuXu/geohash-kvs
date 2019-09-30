@@ -10,8 +10,9 @@ namespace geohash
     {
         static double mLat = 41.87476071;
         static double mLon = -87.67198792;
-        static int mLevel = 6;
+        static int mLevel = 5;
         static double mRadius = 5000;
+        static int mLimit = 200;
 
         static void Main(string[] args)
         {
@@ -101,7 +102,7 @@ namespace geohash
             /// Test get coordinates in bounding circle
             /// 
             var watch = System.Diagnostics.Stopwatch.StartNew();
-            var c = database.BcircleCoordinates(mLat, mLon, mRadius, mLevel);
+            var c = database.BcircleCoordinates(mLat, mLon, mRadius, mLevel, mLimit);
             watch.Stop();
             var elapsedMs = watch.ElapsedMilliseconds;
             Console.WriteLine("BcircleCoordinates, Time elapsed: " + elapsedMs + " ms | " + c.Length + " results get");

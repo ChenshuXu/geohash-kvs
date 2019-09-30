@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+    <title>Quick Start - Leaflet</title>
+
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link rel="shortcut icon" type="image/x-icon" href="docs/images/favicon.ico" />
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.5.1/dist/leaflet.css" integrity="sha512-xwE/Az9zrjBIphAcBb3F6JVqxf46+CDLwfLMHloNu6KEQCAWi6HcDUbeOfBIptF7tcCzusKFjFw2yuvEpDL9wQ==" crossorigin=""/>
+    <script src="node_modules/leaflet/dist/leaflet.js"></script>
+    <script src="node_modules/jquery/dist/jquery.min.js"></script>
+    <script src="src/ajaxmap.js"></script>
+    <script>
+
+        $(document).ready(function () {
+            new AjaxMap("form");
+        })
+    </script>
+
+</head>
+<body>
+<form>
+    <p>
+    Lat: <input type='text' id='input_lat' value="41.87476071">
+    Lon: <input type='text' id="input_lon" value="-87.67198792">
+    </p>
+    <p>
+    range(meter): <input type="number" id="input_range" value="5000">
+    </p>
+    <p>
+    search level: <input type="range" id="input_level" min="1" max="9" value="5">
+    Value: <span id="input_level_value"></span>
+    </p>
+    <p>
+    limit: <input type="number" id="input_limit" value="20">
+    <input type="button" id="submit" value="submit">
+    </p>
+    <p id='message'>&nbsp;</p>
+</form>
+<div id="mapid" style="width: 800px; height: 600px;"></div>
+
+</body>
+</html>
