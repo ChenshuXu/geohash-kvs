@@ -1,60 +1,171 @@
 function AjaxMap(sel) {
     console.log('map started');
 
-    // update the value on the level input slider
-    var slider = document.getElementById("input_level");
-    var output = document.getElementById("input_level_value");
-    output.innerHTML = slider.value;
-    slider.oninput = function() {
-        output.innerHTML = this.value;
-    }
+    this.form = $(sel);
+    this.lat = 41.87476071;
+    this.lon = -87.67198792;
+    this.range = 5000;
+    this.level = 5;
+    this.limit = 20;
 
-    document.getElementById("submit").onclick = function (event) {
-        event.preventDefault();
-        // get input
-        var lat = document.getElementById("input_lat");
-        var lon = document.getElementById("input_lon");
-        var range = document.getElementById("input_range");
-        var limit = document.getElementById("input_limit");
-        var message = document.getElementById("message");
-
-        // invalid input check
-        if (lat.value === "" || Number(lat.value) === NaN)
-        {
-            console.log("error");
-            return;
-        }
-    }
-
-
-    // map
-    var mymap = L.map('mapid').setView([41.87476071, -87.67198792], 12);
-
+    // setup basic map
+    this.map = L.map('mapid').setView([this.lat, this.lon], 12);
+    this.layerGroup = L.layerGroup().addTo(this.map);
     L.tileLayer('https://api.tiles.mapbox.com/v4/{id}/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NXVycTA2emYycXBndHRqcmZ3N3gifQ.rJcFIG214AriISLbB6B5aw', {
         maxZoom: 18,
         attribution: 'Map data &copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors, ' +
             '<a href="https://creativecommons.org/licenses/by-sa/2.0/">CC-BY-SA</a>, ' +
             'Imagery © <a href="https://www.mapbox.com/">Mapbox</a>',
         id: 'mapbox.streets'
-    }).addTo(mymap);
+    }).addTo(this.map);
 
-    L.marker([41.87476071, -87.67198792]).addTo(mymap)
-        .bindPopup("<b>Center</b><br />I am the center.").openPopup();
+    this.configButton();
+    this.updateMap();
+}
 
-    L.circle([41.87476071, -87.67198792], 5000, {
-        color: 'red',
-        fillColor: '#f03',
-        fillOpacity: 0.5
-    }).addTo(mymap).bindPopup("I am a circle.");
+AjaxMap.prototype.configButton = function()
+{
+    var that = this;
 
+    // popup
     var popup = L.popup();
-
     function onMapClick(e) {
         popup
             .setLatLng(e.latlng)
-            .setContent("You clicked the map at " + e.latlng.toString())
-            .openOn(mymap);
-    }
+            .setContent("You clicked the map at " + e.latlng.toString() + "<input type=\"button\" id=\"popup-submit\" value=\"center here\">")
+            .openOn(that.map);
 
-    mymap.on('click', onMapClick);
+        document.getElementById("popup-submit").onclick = function (event) {
+            that.lat = e.latlng.lat;
+            that.lon = e.latlng.lng;
+            that.updateMap();
+            that.updateInput();
+        }
+    }
+    this.map.on('click', onMapClick);
+
+    // get input
+    var lat = document.getElementById("input_lat");
+    var lon = document.getElementById("input_lon");
+    var range = document.getElementById("input_range");
+    var level = document.getElementById("input_level");
+    var limit = document.getElementById("input_limit");
+    var message = document.getElementById("message");
+
+    lat.oninput = function(event) {
+        if (lat.value === "" || isNaN(Number(lat.value)))
+        {
+            console.log("error lat");
+            message.innerHTML = "error lat";
+            return;
+        }
+        that.lat = Number(lat.value);
+        that.updateMap();
+    };
+
+    lon.oninput = function(event) {
+        if (lon.value === "" || isNaN(Number(lon.value)))
+        {
+            console.log("error lon");
+            message.innerHTML = "error lon";
+            return;
+        }
+        that.lon = Number(lon.value);
+        that.updateMap();
+    };
+
+    range.oninput = function(event) {
+        if (range.value === "" || isNaN(Number(range.value)))
+        {
+            console.log("error range");
+            message.innerHTML = "error range";
+            return;
+        }
+        that.range = Number(range.value);
+        that.updateMap();
+    };
+
+    limit.oninput = function(event) {
+        if (limit.value === "" || !Number.isInteger(Number(limit.value)))
+        {
+            console.log("error limit");
+            message.innerHTML = "error limit";
+            return;
+        }
+        that.limit = Number(limit.value);
+        that.updateMap();
+    };
+
+    // update the value on the level input slider
+    var slider = document.getElementById("input_level");
+    var output = document.getElementById("input_level_value");
+    output.innerHTML = slider.value;
+    slider.oninput = function() {
+        output.innerHTML = this.value;
+        that.level = this.value;
+        that.updateMap();
+    };
+
+    //console.log(this);
+}
+
+AjaxMap.prototype.updateInput = function()
+{
+    var lat = document.getElementById("input_lat");
+    lat.value = this.lat;
+    var lon = document.getElementById("input_lon");
+    lon.value = this.lon;
+}
+
+AjaxMap.prototype.updateMap = function()
+{
+    console.log('update with value: lat '+ this.lat + ' lon ' + this.lon + ' range ' + this.range + ' search level ' + this.level + ' limit ' + this.limit);
+
+    // clear map elements
+    this.layerGroup.clearLayers();
+    
+    // draw new elements
+    // draw center
+    var marker = L.marker([this.lat, this.lon]).addTo(this.layerGroup)
+        .bindPopup("<b>Center</b><br />I am the center.").openPopup();
+
+    // draw range
+    var circle = L.circle([this.lat, this.lon], this.range, {
+        color: 'red',
+        fillColor: '#f03',
+        fillOpacity: 0.4
+    }).addTo(this.layerGroup);
+
+    this.getCoordinates(this.lat, this.lon, this.range, this.level, this.limit);
+    // draw coordinates
+
+    // draw bounding boxes
+
+}
+
+// call server, returns all coordinates
+AjaxMap.prototype.getCoordinates = function(lat, lon, range, level, limit)
+{
+    console.log('uprequest server with value: lat '+ lat + ' lon ' + lon + ' range ' + range + ' search level ' + level + ' limit ' + limit);
+    $.ajax({
+        url: "https://localhost:5001/coordinates",
+        method: "POST",
+        dataType: 'json',
+        contentType: 'application/json; charset=utf-8',
+        data: {"lat":lat, "lon":lon, "range":range, "level":level, "limit":limit},
+        success: function(data) {
+            console.log(data[0].lat);
+
+        },
+        error: function() {
+            console.log("error get");
+        }
+    });
+
+}
+
+// call server, returns all bounding box coordinates
+AjaxMap.prototype.getBoundingBoxes = function(lat, lon, range, level)
+{
+
 }

@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>netcoreapp3.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\geohash\geohash\DataBase.cs">
+      <Link>geohash\DataBase.cs</Link>
+    </Compile>
+    <Compile Include="..\..\geohash\geohash\Coordinates.cs">
+      <Link>geohash\Coordinates.cs</Link>
+    </Compile>
+    <Compile Include="..\..\geohash\geohash\KMLGenerator.cs">
+      <Link>geohash\KMLGenerator.cs</Link>
+    </Compile>
+    <Compile Include="..\..\geohash\geohash\GeohashDecodeResult.cs">
+      <Link>geohash\GeohashDecodeResult.cs</Link>
+    </Compile>
+    <Compile Include="..\..\geohash\geohash\BoundingBox.cs">
+      <Link>geohash\BoundingBox.cs</Link>
+    </Compile>
+    <Compile Include="..\..\geohash\geohash\GeoHash.cs">
+      <Link>geohash\GeoHash.cs</Link>
+    </Compile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\geohash\geohash\geohash.csproj">
+      <Link>geohash\geohash.csproj</Link>
+    </None>
+    <None Include="..\..\geohash\geohash\Resources\crime.csv">
+      <Link>geohash\Resources\crime.csv</Link>
+    </None>
+    <None Include="..\..\geohash\geohash\Resources\Crimes_-_2019.csv">
+      <Link>geohash\Resources\Crimes_-_2019.csv</Link>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="Models\" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="12.0.2" />
+  </ItemGroup>
+</Project>
