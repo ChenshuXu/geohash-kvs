@@ -27,7 +27,7 @@ namespace server.Controllers
         public IEnumerable<Coordinates> Get()
         {
             var db = _dbInterface.GetDatabase();
-            return db.BcircleCoordinates(41.87476071, -87.67198792, 5000, 5, 0).ToArray();
+            return db.BcircleCoordinates(41.87476071, -87.67198792, 5000, 5, 100).ToArray();
             //return new string[] { "value1", "value2", _dbInterface.GetDBinfo() };
         }
 
