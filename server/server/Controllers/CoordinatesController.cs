@@ -1,11 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
-using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
-using Newtonsoft.Json.Linq;
-using geohash;
 using NGeoHash;
+using server.Models;
 
 // For more information on enabling Web API for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
 
@@ -40,13 +37,13 @@ namespace server.Controllers
 
         // POST /coordinates
         [HttpPost]
-        public IEnumerable<Coordinates> Post([FromBody]JObject data)
+        public IEnumerable<Coordinates> Post([FromBody]RequestModelClass data)
         {
-            double lat = (double)data["lat"];
-            double lon = (double)data["lon"];
-            double range = (double)data["range"];
-            int level = (int)data["level"];
-            int limit = (int)data["limit"];
+            double lat = data.lat;
+            double lon = data.lon;
+            double range = data.range;
+            int level = data.level;
+            int limit = data.limit;
 
             var db = _dbInterface.GetDatabase();
             return db.BcircleCoordinates(lat, lon, range, level, limit).ToArray();

@@ -132,7 +132,6 @@ namespace geohash
         * @param {int} numberOfChars
         * @returns {string[]}
         */
-
         public static string[] Bcircle(double latitude, double longitude, double radius, int numberOfChars = 9)
         {
             var hashList = new List<string>();
@@ -216,6 +215,21 @@ namespace geohash
                 }
             }
             
+
+            return hashList.ToArray();
+        }
+
+        /**
+        * Bounding Polygon
+        *
+        * Return all the hashString covered by the polygon in numberOfChars
+        * @param {Coordinates[]} list of edge coordinates of the polygon
+        * @param {int} numberOfChars
+        * @returns {string[]}
+        */
+        public static string[] Bpolygon(Coordinates[] coordinates, int numberOfChars = 9)
+        {
+            var hashList = new List<string>();
 
             return hashList.ToArray();
         }

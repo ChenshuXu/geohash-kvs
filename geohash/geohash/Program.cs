@@ -81,10 +81,11 @@ namespace geohash
         {
             DataBase database = new DataBase();
             m_dataBase = database;
-            // TODO: takes 34 seconds for load dataset1
             var watch0 = System.Diagnostics.Stopwatch.StartNew();
-            //AddDatasetSmall(database);
-            AddDataset1(database);
+            // TODO: takes 8895 ms for database small
+            AddDatasetSmall(database);
+            // TODO: takes 34 seconds for load dataset1
+            //AddDataset1(database);
             //AddDataset2(database);
             watch0.Stop();
             Console.WriteLine("Process data takes " + watch0.ElapsedMilliseconds + " ms");

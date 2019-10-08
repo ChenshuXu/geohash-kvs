@@ -147,27 +147,31 @@ AjaxMap.prototype.updateMap = function()
 AjaxMap.prototype.getCoordinates = function(lat, lon, range, level, limit)
 {
     console.log('request server with value: lat '+ lat + ' lon ' + lon + ' range ' + range + ' search level ' + level + ' limit ' + limit);
-    // $.ajax({
-    //     url: "https://localhost:5001/coordinates",
-    //     method: "POST",
-    //     dataType: 'json',
-    //     contentType: 'application/json; charset=utf-8',
-    //     data: {"lat":lat, "lon":lon, "range":range, "level":level, "limit":limit},
-    //     success: function(data) {
-    //         console.log(data[0].lat);
-    //
-    //     },
-    //     error: function() {
-    //         console.log("error get");
-    //     }
-    // });
-    var data = parse_json(coordinatesJson());
-    console.log(data[0].lat);
-    var i;
-    for (i=0; i<data.length; i++)
-    {
-        L.marker([data[i].lat, data[i].lon]).addTo(this.layerGroup)
-    }
+    $.ajax({
+        url: "https://localhost:5001/coordinates",
+        method: "POST",
+        contentType: "application/json",
+        dataType: 'application/json',
+        data: {"lat":lat, "lon":lon, "range":range, "level":level, "limit":limit},
+        success: function(data) {
+            console.log(data[0].lat);
+            var i;
+            for (i=0; i<data.length; i++)
+            {
+                L.marker([data[i].lat, data[i].lon]).addTo(this.layerGroup)
+            }
+        },
+        error: function() {
+            console.log("error get");
+        }
+    });
+    // var data = parse_json(coordinatesJson());
+    // console.log(data[0].lat);
+    // var i;
+    // for (i=0; i<data.length; i++)
+    // {
+    //     L.marker([data[i].lat, data[i].lon]).addTo(this.layerGroup)
+    // }
 }
 
 // call server, returns all bounding box coordinates
