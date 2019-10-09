@@ -9,7 +9,7 @@ using server.Models;
 namespace server.Controllers
 {
     [ApiController]
-    [Route("coordinates")]
+    
     public class CoordinatesController : Controller
     {
         DatabaseInterface _dbInterface;
@@ -20,6 +20,7 @@ namespace server.Controllers
         }
 
         // GET: /coordinates
+        [Route("coordinates")]
         [HttpGet]
         public IEnumerable<Coordinates> Get()
         {
@@ -28,22 +29,33 @@ namespace server.Controllers
             //return new string[] { "value1", "value2", _dbInterface.GetDBinfo() };
         }
 
-        // GET /coordinates/5
-        [HttpGet("{id}")]
-        public string Get(int id)
-        {
-            return id.ToString();
-        }
-
         // POST /coordinates
+        [Route("coordinates")]
         [HttpPost]
-        public IEnumerable<Coordinates> Post([FromBody]RequestModelClass data)
+        public IEnumerable<Coordinates> GetCoordinates([FromBody]RequestModelClass data)
         {
             double lat = data.lat;
             double lon = data.lon;
             double range = data.range;
             int level = data.level;
             int limit = data.limit;
+
+            var db = _dbInterface.GetDatabase();
+            return db.BcircleCoordinates(lat, lon, range, level, limit).ToArray();
+        }
+
+        // POST /bboxes
+        [Route("bboxes")]
+        [HttpPost]
+        public IEnumerable<Coordinates> GetBboxes([FromBody]RequestModelClass data)
+        {
+            double lat = data.lat;
+            double lon = data.lon;
+            double range = data.range;
+            int level = data.level;
+            int limit = data.limit;
+
+            return geohash.DataBase.Bcircle(lat, lon, range, level);
 
             var db = _dbInterface.GetDatabase();
             return db.BcircleCoordinates(lat, lon, range, level, limit).ToArray();

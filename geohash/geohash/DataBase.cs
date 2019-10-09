@@ -219,6 +219,14 @@ namespace geohash
             return hashList.ToArray();
         }
 
+
+        public static Coordinates[] BcircleBoxCoordinates(double latitude, double longitude, double radius, int numberOfChars = 9)
+        {
+            var coorList = new List<Coordinates>();
+
+            return coorList.ToArray();
+        }
+
         /**
         * Bounding Polygon
         *
