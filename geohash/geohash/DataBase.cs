@@ -13,7 +13,7 @@ namespace geohash
         private IDictionary<string, List<Coordinates>> Dict = new Dictionary<string, List<Coordinates>>();
         private List<string> FullList = new List<string>();
         private int numberOfCharsStart = 1;
-        private int maxCoordinatesInValue = 1000;
+        private int maxCoordinatesInValue = 500;
         private int maxNumberOfChar = 9;
 
         public void Add2( double latitude, double longitude, int numberOfChars = 1 )
@@ -83,17 +83,13 @@ namespace geohash
                     List<Coordinates> value = new List<Coordinates> { coordinate };
                     Dict.Add(key, value);
                     //Console.WriteLine("Add new key " + key);
-                    continue;
                 }
-
-                if (Dict.ContainsKey(key) && Dict[key].Count < maxCoordinatesInValue)
+                else if (Dict.ContainsKey(key) && Dict[key].Count < maxCoordinatesInValue)
                 {
                     Dict[key].Add(coordinate);
                     //Console.WriteLine("Add existent key " + key + ", " + Dict[key].Count);
-                    continue;
                 }
-
-                if (numberOfChars >= maxNumberOfChar)
+                else if (numberOfChars == maxCoordinatesInValue)
                 {
                     Dict[key].Add(coordinate);
                     //Console.WriteLine("Add existent key " + key + ", " + Dict[key].Count);
@@ -219,12 +215,19 @@ namespace geohash
             return hashList.ToArray();
         }
 
-
-        public static Coordinates[] BcircleBoxCoordinates(double latitude, double longitude, double radius, int numberOfChars = 9)
+        /**
+         * returns all bounding boxes that covers the circle
+         */
+        public static BoundingBox[] BcircleBoxes(double latitude, double longitude, double radius, int numberOfChars = 9)
         {
-            var coorList = new List<Coordinates>();
+            var boxList = new List<BoundingBox>();
+            string[] hashList = Bcircle(latitude, longitude, radius, numberOfChars);
+            foreach(string hash in hashList)
+            {
+                boxList.Add(GeoHash.DecodeBbox(hash));
+            }
 
-            return coorList.ToArray();
+            return boxList.ToArray();
         }
 
         /**
@@ -345,6 +348,22 @@ namespace geohash
             }
 
             return coorList.ToArray();
+        }
+
+        /**
+         * returns all bounding boxes covered by box
+         */
+        public static BoundingBox[] BboxBoxes(double minLat, double minLon, double maxLat, double maxLon, int numberOfChars = 9)
+        {
+            
+            var boxList = new List<BoundingBox>();
+            string[] hashList = GeoHash.Bboxes(minLat, minLon, maxLat, maxLon, numberOfChars);
+            foreach (string hash in hashList)
+            {
+                boxList.Add(GeoHash.DecodeBbox(hash));
+            }
+
+            return boxList.ToArray();
         }
 
         /**
@@ -494,11 +513,6 @@ namespace geohash
             double north = Measure(box.Maximum.Lat, box.Maximum.Lon, box.Maximum.Lat, box.Minimum.Lon);
 
             return Math.Min(Math.Min(west, east), Math.Min(north, south));
-        }
-
-        public static implicit operator EnvironmentVariableTarget(DataBase v)
-        {
-            throw new NotImplementedException();
         }
     }
 }

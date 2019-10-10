@@ -1,7 +1,7 @@
-function AjaxMap(sel) {
+function AjaxMap(mapid) 
+{
     console.log('map started');
 
-    this.form = $(sel);
     this.lat = 41.87476071;
     this.lon = -87.67198792;
     this.range = 5000;
@@ -9,7 +9,7 @@ function AjaxMap(sel) {
     this.limit = 100;
 
     // setup basic map
-    this.map = L.map('mapid').setView([this.lat, this.lon], 12);
+    this.map = L.map(mapid).setView([this.lat, this.lon], 12);
     this.layerGroup = L.layerGroup().addTo(this.map);
     L.tileLayer('https://api.tiles.mapbox.com/v4/{id}/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NXVycTA2emYycXBndHRqcmZ3N3gifQ.rJcFIG214AriISLbB6B5aw', {
         maxZoom: 18,
@@ -19,11 +19,11 @@ function AjaxMap(sel) {
         id: 'mapbox.streets'
     }).addTo(this.map);
 
-    this.configButton();
+    this.configMap();
     this.updateMap();
 }
 
-AjaxMap.prototype.configButton = function()
+AjaxMap.prototype.configMap = function()
 {
     var that = this;
 
@@ -48,7 +48,6 @@ AjaxMap.prototype.configButton = function()
     var lat = document.getElementById("input_lat");
     var lon = document.getElementById("input_lon");
     var range = document.getElementById("input_range");
-    var level = document.getElementById("input_level");
     var limit = document.getElementById("input_limit");
     var message = document.getElementById("message");
 
@@ -105,8 +104,6 @@ AjaxMap.prototype.configButton = function()
         that.level = Number(this.value);
         that.updateMap();
     };
-
-    //console.log(this);
 }
 
 AjaxMap.prototype.updateInput = function()
@@ -137,36 +134,38 @@ AjaxMap.prototype.updateMap = function()
     }).addTo(this.layerGroup);
 
     // draw coordinates
-    this.getCoordinates(this.lat, this.lon, this.range, this.level, this.limit);
-    
-    // draw bounding boxes
-    this.getBoundingBoxes(this.lat, this.lon, this.range, this.level);
-}
-
-// call server, returns all coordinates
-AjaxMap.prototype.getCoordinates = function(lat, lon, range, level, limit)
-{
     var that = this;
-    console.log('request server with value: lat '+ lat + ' lon ' + lon + ' range ' + range + ' search level ' + level + ' limit ' + limit);
     var request = new Object();
-    request.lat = lat;
-    request.lon = lon;
-    request.range = range;
-    request.level = level;
-    request.limit = limit;
-    //console.log(request);
+    request.lat = this.lat;
+    request.lon = this.lon;
+    request.range = this.range;
+    request.level = this.level;
+    request.limit = this.limit;
+    console.log('getCoordinates request server: '+ JSON.stringify(request));
     $.ajax({
         url: "https://localhost:5001/coordinates",
         method: "POST",
         contentType: "application/json",
         data: JSON.stringify(request),
         success: function(result) {
-            console.log(result.length + " results find");
-            var i;
-            for (i=0; i<result.length; i++)
-            {
-                L.marker([result[i].lat, result[i].lon]).addTo(that.layerGroup)
-            }
+            console.log(result.length + " coordinates returned");
+            document.getElementById("map1_coordinates_count").innerHTML = result.length+ " coordinates get";
+            that.drawCoordinates(result);
+        },
+        error: function(jqxhr, status, exception) {
+            console.log("error get "+ jqxhr + status + exception);
+        }
+    });
+    // draw bounding boxes
+    console.log('getBoundingBoxes request server: '+ JSON.stringify(request));
+    $.ajax({
+        url: "https://localhost:5001/coordinatesBboxes",
+        method: "POST",
+        contentType: "application/json",
+        data: JSON.stringify(request),
+        success: function(result) {
+            console.log(result.length + " boxes returned");
+            that.drawBoundingBoxes(result);
         },
         error: function(jqxhr, status, exception) {
             console.log("error get "+ jqxhr + status + exception);
@@ -174,24 +173,25 @@ AjaxMap.prototype.getCoordinates = function(lat, lon, range, level, limit)
     });
 }
 
-// call server, returns all bounding box coordinates
-AjaxMap.prototype.getBoundingBoxes = function(lat, lon, range, level)
+// takes in an array of coordinates json
+AjaxMap.prototype.drawCoordinates = function(coordinates)
 {
-    var that = this;
-    console.log('request server with value: lat '+ lat + ' lon ' + lon + ' range ' + range + ' search level ' + level);
-    var request = new Object();
-    request.lat = lat;
-    request.lon = lon;
-    request.range = range;
-    request.level = level;
+    var i;
+    for (i=0; i<coordinates.length; i++)
+    {
+        L.marker([coordinates[i].lat, coordinates[i].lon]).addTo(this.layerGroup)
+    }
 }
 
-function parse_json(json) {
-    try {
-        var data = $.parseJSON(json);
-    } catch(err) {
-        throw "JSON parse error: " + json;
+// takes in an array of bounding box json
+AjaxMap.prototype.drawBoundingBoxes = function(boxes)
+{
+    var i;
+    for (i=0; i<boxes.length; i++)
+    {
+        var max = boxes[i].maximum;
+        var min = boxes[i].minimum;
+        var bounds = [[min.lat, min.lon],[max.lat, max.lon]];
+        L.rectangle(bounds, {color: "#ff7800", weight: 1}).addTo(this.layerGroup);
     }
-
-    return data;
 }

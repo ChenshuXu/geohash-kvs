@@ -1,7 +1,7 @@
 ﻿using System;
 namespace server.Models
 {
-    public class RequestModelClass
+    public class CircleSearchRequestModelClass
     {
         public double lat { get; set; }
         public double lon { get; set; }

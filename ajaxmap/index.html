@@ -13,33 +13,63 @@
     <script src="node_modules/leaflet/dist/leaflet.js"></script>
     <script src="node_modules/jquery/dist/jquery.min.js"></script>
     <script src="src/ajaxmap.js"></script>
+    <script src="src/ajaxmap2.js"></script>
     <script>
         $(document).ready(function () {
-            new AjaxMap("form");
+            new AjaxMap("map1");
+        })
+    </script>
+
+    <script>
+        $(document).ready(function () {
+            new AjaxMap2("map2");
         })
     </script>
 
 </head>
-<body>
+
+<h1>map1</h1>
 <form>
     <p>
-    Lat: <input type='text' id='input_lat' value="41.87476071">
-    Lon: <input type='text' id="input_lon" value="-87.67198792">
+        Lat: <input type='text' id='input_lat' value="41.87476071">
+        Lon: <input type='text' id="input_lon" value="-87.67198792">
     </p>
     <p>
-    range(meter): <input type="number" id="input_range" value="5000">
+        range(meter): <input type="number" id="input_range" value="5000">
     </p>
     <p>
-    search level: <input type="range" id="input_level" min="1" max="9" value="5">
-    Value: <span id="input_level_value"></span>
+        search level: <input type="range" id="input_level" min="1" max="8" value="5">
+        Value: <span id="input_level_value"></span>
     </p>
     <p>
-    limit: <input type="number" id="input_limit" value="100">
-    <input type="button" id="submit" value="submit">
+        limit: <input type="number" id="input_limit" value="100">
+        <input type="button" id="submit" value="submit">
+    </p>
+    <p>
+        <span id="map1_coordinates_count"></span>
     </p>
     <p id='message'>&nbsp;</p>
 </form>
-<div id="mapid" style="width: 800px; height: 600px;"></div>
+<div id="map1" style="width: 800px; height: 600px;"></div>
 
-</body>
+
+<h1>map2</h1>
+<form>
+    <p>
+        Lat max: <span id="map2_lat_max"></span>
+        Lon max: <span id="map2_lon_max"></span>
+    </p>
+    <p>
+        Lat min: <span id="map2_lat_min"></span>
+        Lon min: <span id="map2_lon_min"></span>
+    </p>
+    <p>
+        <span id="map2_coordinates_count"></span>
+    </p>
+    <p>
+        search level: <input type="range" id="map2_input_level" min="1" max="9" value="6">
+        Value: <span id="map2_input_level_value"></span>
+    </p>
+</form>
+<div id="map2" style="width: 800px; height: 600px;"></div>
 </html>

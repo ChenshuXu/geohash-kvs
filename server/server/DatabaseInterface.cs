@@ -25,6 +25,7 @@ namespace server
             watch0.Stop();
             Console.WriteLine("Process data takes " + watch0.ElapsedMilliseconds + " ms");
             ok = "Process data takes " + watch0.ElapsedMilliseconds + " ms";
+            //m_dataBase.Display();
         }
 
         public string GetDBinfo()

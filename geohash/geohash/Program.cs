@@ -83,13 +83,13 @@ namespace geohash
             m_dataBase = database;
             var watch0 = System.Diagnostics.Stopwatch.StartNew();
             // TODO: takes 8895 ms for database small
-            AddDatasetSmall(database);
+            //AddDatasetSmall(database);
             // TODO: takes 34 seconds for load dataset1
-            //AddDataset1(database);
+            AddDataset1(database);
             //AddDataset2(database);
             watch0.Stop();
             Console.WriteLine("Process data takes " + watch0.ElapsedMilliseconds + " ms");
-            //database.Display();
+            database.Display();
 
             ///
             /// Test get coordinates in bounding box
