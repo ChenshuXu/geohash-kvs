@@ -225,7 +225,8 @@ namespace NGeoHash
                 {
                     Lat = minLat,
                     Lon = minLon
-                }
+                },
+                hash = hashString.ToLower()
             };
         }
 

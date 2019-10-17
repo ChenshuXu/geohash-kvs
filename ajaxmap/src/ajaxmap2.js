@@ -29,14 +29,14 @@ AjaxMap2.prototype.configMap = function()
     var that = this;
     
     // popup
-    var popup = L.popup();
-    function onMapClick(e) {
-        popup
-            .setLatLng(e.latlng)
-            .setContent("You clicked the map at " + e.latlng.toString())
-            .openOn(that.map);
-    }
-    this.map.on('click', onMapClick);
+    // var popup = L.popup();
+    // function onMapClick(e) {
+    //     popup
+    //         .setLatLng(e.latlng)
+    //         .setContent("You clicked the map at " + e.latlng.toString())
+    //         .openOn(that.map);
+    // }
+    // this.map.on('click', onMapClick);
 
     // update the value on the level input slider
     var slider = document.getElementById("map2_input_level");
@@ -72,6 +72,8 @@ AjaxMap2.prototype.updateMap = function ()
     document.getElementById("map2_lon_max").innerHTML = this.maxCoor.lng;
     document.getElementById("map2_lat_min").innerHTML = this.minCoor.lat;
     document.getElementById("map2_lon_min").innerHTML = this.minCoor.lng;
+    document.getElementById("map2_input_level").value = this.level;
+    document.getElementById("map2_input_level_value").innerHTML = this.level;
 
     var request = new Object();
     request.maxlat = this.maxCoor.lat;
@@ -115,7 +117,9 @@ AjaxMap2.prototype.drawCoordinates = function(coordinates)
     var i;
     for (i=0; i<coordinates.length; i++)
     {
-        L.marker([coordinates[i].lat, coordinates[i].lon]).addTo(this.layerGroup)
+        var c = coordinates[i]
+        L.marker([c.lat, c.lon]).addTo(this.layerGroup)
+        .bindPopup(c.id+','+c.locationDescription+','+c.description)
     }
 }
 
@@ -128,7 +132,7 @@ AjaxMap2.prototype.drawBoundingBoxes = function(boxes)
         var max = boxes[i].maximum;
         var min = boxes[i].minimum;
         var bounds = [[min.lat, min.lon],[max.lat, max.lon]];
-        L.rectangle(bounds, {color: "#ff7800", weight: 1}).addTo(this.layerGroup);
+        L.rectangle(bounds, {color: "#ff7800", weight: 3}).addTo(this.layerGroup);
     }
 }
 

@@ -126,6 +126,8 @@ namespace geohash
                 string[] columns = line.Split(',');
                 string LatStr = columns[19];
                 string LonStr = columns[20];
+                string LocationDescription = columns[11];
+                string id = columns[0];
                 if (LatStr != "" && LonStr != "")
                 {
                     double lat;
@@ -141,7 +143,13 @@ namespace geohash
                     {
                         continue;
                     }
-                    database.Add(lat, lon);
+                    Coordinates c = new Coordinates {
+                        Lat = lat,
+                        Lon = lon,
+                        Id = id,
+                        LocationDescription = LocationDescription
+                    };
+                    database.Add(c);
                     count++;
                 }
 
@@ -157,18 +165,19 @@ namespace geohash
         {
             string path = "../../../Resources/Crimes_-_2019.csv";
             string[] lines = System.IO.File.ReadAllLines(path);
-            //Console.WriteLine(lines[1]);
             for (int i = 1; i < lines.Length; i++)
             {
                 string line = lines[i];
                 string[] columns = line.Split(',');
                 string LatStr = columns[19];
                 string LonStr = columns[20];
+                string LocationDescription = columns[7];
+                string id = columns[0];
                 if (LatStr != "" && LonStr != "")
                 {
                     double lat;
                     double lon;
-                    //Console.WriteLine(LatStr + LonStr);
+                    Console.WriteLine(LatStr + LonStr+','+id +','+ LocationDescription);
                     // Filter out errors
                     try
                     {
@@ -179,7 +188,12 @@ namespace geohash
                     {
                         continue;
                     }
-                    database.Add(lat, lon);
+                    Coordinates c = new Coordinates {
+                        Lat = lat,
+                        Lon = lon,
+                        Id = id,
+                        LocationDescription = LocationDescription };
+                    database.Add(c);
                 }
             }
         }
@@ -211,7 +225,14 @@ namespace geohash
                     {
                         continue;
                     }
-                    database.Add(lat, lon);
+                    Coordinates c = new Coordinates
+                    {
+                        Lat = lat,
+                        Lon = lon,
+                        Id = "",
+                        LocationDescription = ""
+                    };
+                    database.Add(c);
                 }
             }
         }

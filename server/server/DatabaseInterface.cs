@@ -1,6 +1,7 @@
 ﻿using System;
 using System.IO;
 using geohash;
+using NGeoHash;
 
 namespace server
 {
@@ -49,6 +50,9 @@ namespace server
                 string[] columns = line.Split(',');
                 string LatStr = columns[19];
                 string LonStr = columns[20];
+                string LocationDescription = columns[7];
+                string id = columns[0];
+                string description = columns[6];
                 if (LatStr != "" && LonStr != "")
                 {
                     double lat;
@@ -63,48 +67,17 @@ namespace server
                     {
                         continue;
                     }
-                    database.Add(lat, lon);
+                    Coordinates c = new Coordinates
+                    {
+                        Lat = lat,
+                        Lon = lon,
+                        Id = id,
+                        LocationDescription = LocationDescription,
+                        Description = description
+                    };
+                    database.Add(c);
                 }
             }
-        }
-
-        void AddDatasetSmall(DataBase database)
-        {
-            string path = "../../../Resources/Crimes_-_2019.csv";
-            string[] lines = System.IO.File.ReadAllLines(path);
-            //Console.WriteLine(lines[1]);
-            int count = 0;
-            for (int i = 1; i < lines.Length; i++)
-            {
-                string line = lines[i];
-                string[] columns = line.Split(',');
-                string LatStr = columns[19];
-                string LonStr = columns[20];
-                if (LatStr != "" && LonStr != "")
-                {
-                    double lat;
-                    double lon;
-                    //Console.WriteLine(LatStr + LonStr);
-                    // Filter out errors
-                    try
-                    {
-                        lat = Convert.ToDouble(LatStr);
-                        lon = Convert.ToDouble(LonStr);
-                    }
-                    catch
-                    {
-                        continue;
-                    }
-                    database.Add(lat, lon);
-                    count++;
-                }
-
-                if (count > 5000)
-                {
-                    return;
-                }
-            }
-
         }
     }
 }

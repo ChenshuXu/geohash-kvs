@@ -68,14 +68,15 @@ namespace geohash
             }
         }
 
-        public void Add(double latitude, double longitude)
+        public void Add(Coordinates coordinate)
         {
+            double latitude = coordinate.Lat;
+            double longitude = coordinate.Lon;
             for (int numberOfChars = 1; numberOfChars <= maxNumberOfChar; numberOfChars++)
             {
                 // Get the key
                 string key = GeoHash.Encode(latitude, longitude, numberOfChars);
-                // Get the value
-                Coordinates coordinate = new Coordinates { Lat = latitude, Lon = longitude };
+                // The value is coordinate
 
                 // First entry
                 if (!Dict.ContainsKey(key))
@@ -111,7 +112,9 @@ namespace geohash
 
                     foreach (var i in item.Value)
                     {
-                        string str = item.Key + "," + item.Value.Count + "," + i.Lat.ToString() + "," + i.Lon.ToString();
+                        string str = item.Key + "," + item.Value.Count + ","
+                            + i.Lat.ToString() + "," + i.Lon.ToString() + ","
+                            + i.Id + "," + i.LocationDescription;
                         sw.WriteLine(str);
                     }
                 }

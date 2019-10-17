@@ -1,15 +1,16 @@
+'use strict';
 function AjaxMap(mapid) 
 {
     console.log('map started');
 
     this.lat = 41.87476071;
     this.lon = -87.67198792;
-    this.range = 5000;
-    this.level = 5;
-    this.limit = 100;
+    this.range = 800;
+    this.level = 6;
+    this.limit = 0;
 
     // setup basic map
-    this.map = L.map(mapid).setView([this.lat, this.lon], 12);
+    this.map = L.map(mapid).setView([this.lat, this.lon], 15);
     this.layerGroup = L.layerGroup().addTo(this.map);
     L.tileLayer('https://api.tiles.mapbox.com/v4/{id}/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NXVycTA2emYycXBndHRqcmZ3N3gifQ.rJcFIG214AriISLbB6B5aw', {
         maxZoom: 18,
@@ -39,7 +40,6 @@ AjaxMap.prototype.configMap = function()
             that.lat = e.latlng.lat;
             that.lon = e.latlng.lng;
             that.updateMap();
-            that.updateInput();
         }
     }
     this.map.on('click', onMapClick);
@@ -106,31 +106,30 @@ AjaxMap.prototype.configMap = function()
     };
 }
 
-AjaxMap.prototype.updateInput = function()
-{
-    var lat = document.getElementById("input_lat");
-    lat.value = this.lat;
-    var lon = document.getElementById("input_lon");
-    lon.value = this.lon;
-}
-
 AjaxMap.prototype.updateMap = function()
 {
     //console.log('update with value: lat '+ this.lat + ' lon ' + this.lon + ' range ' + this.range + ' search level ' + this.level + ' limit ' + this.limit);
-
+    document.getElementById("message").innerHTML = "";
     // clear map elements
     this.layerGroup.clearLayers();
+
+    // update input area
+    document.getElementById("input_range").value = this.range;
+    document.getElementById("input_limit").value = this.limit;
+    document.getElementById("input_lat").value = this.lat;
+    document.getElementById("input_lon").value = this.lon;
+    document.getElementById("input_level").value = this.level;
+    document.getElementById("input_level_value").innerHTML = this.level;
     
     // draw new elements
     // draw center
     var marker = L.marker([this.lat, this.lon]).addTo(this.layerGroup)
-        .bindPopup("<b>Center</b><br />I am the center.").openPopup();
-
+        .bindTooltip("<b>Center</b>", {direction:"top"}).openTooltip();
     // draw range
     var circle = L.circle([this.lat, this.lon], this.range, {
         color: 'red',
         fillColor: '#f03',
-        fillOpacity: 0.4
+        fillOpacity: 0.1
     }).addTo(this.layerGroup);
 
     // draw coordinates
@@ -173,13 +172,29 @@ AjaxMap.prototype.updateMap = function()
     });
 }
 
+AjaxMap.prototype.onClickMarker = function(c)
+{
+    console.log(c);
+    document.getElementById("map1_info").innerHTML = `
+<p>
+click on marker ${c.lat}, ${c.lon}
+</p>
+<p>
+${c.id}, ${c.locationDescription}, ${c.description}
+</p>`;
+}
+
 // takes in an array of coordinates json
 AjaxMap.prototype.drawCoordinates = function(coordinates)
 {
-    var i;
-    for (i=0; i<coordinates.length; i++)
+    var that = this;
+    for (let i=0; i<coordinates.length; i++)
     {
-        L.marker([coordinates[i].lat, coordinates[i].lon]).addTo(this.layerGroup)
+        let c = coordinates[i];
+        L.marker([c.lat, c.lon]).addTo(that.layerGroup)
+        .bindPopup(c.id+','+c.locationDescription+','+c.description).on("click", function(ev) {
+            that.onClickMarker(c);
+        });
     }
 }
 
@@ -189,9 +204,12 @@ AjaxMap.prototype.drawBoundingBoxes = function(boxes)
     var i;
     for (i=0; i<boxes.length; i++)
     {
-        var max = boxes[i].maximum;
-        var min = boxes[i].minimum;
+        var box = boxes[i];
+        var max = box.maximum;
+        var min = box.minimum;
         var bounds = [[min.lat, min.lon],[max.lat, max.lon]];
-        L.rectangle(bounds, {color: "#ff7800", weight: 1}).addTo(this.layerGroup);
+        L.rectangle(bounds, {color: "#ff8e2c", weight: 2})
+        .bindTooltip(box.hash,{permanent:true, direction:"center", opacity:0.6})
+        .openTooltip().addTo(this.layerGroup);
     }
 }
