@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using NGeoHash;
 using System.IO;
 using System.Linq;
+using Newtonsoft.Json.Linq;
+using Newtonsoft.Json;
 
 namespace geohash
 {
@@ -120,6 +122,53 @@ namespace geohash
                 }
             }
         }
+
+        public JObject DisplayBoundingBoxSearchProcess(double selectLatitude, double selectLongitude, int level = 9)
+        {
+            string hash = GeoHash.Encode(selectLatitude, selectLongitude, level);
+
+            JObject json = JObject.FromObject(
+                new
+                {
+                    Boxhash = hash
+                }
+            );
+
+            return json;
+        }
+
+        public JObject DisplayBoundingCircleSearchProcess(double selectLatitude, double selectLongitude, double searchLatitude, double searchLongitude, double radius, int level = 9)
+        {
+            string hash = GeoHash.Encode(selectLatitude, selectLongitude, level);
+
+            // get all other points(out of range) in box
+            Coordinates[] allCoordinates = GetCoordinates(hash);
+            List<Coordinates> coordinatesInRange = new List<Coordinates>();
+            List<Coordinates> coordinatesOutOfRange = new List<Coordinates>();
+            foreach(Coordinates c in allCoordinates)
+            {
+                if (Measure(c.Lat, c.Lon, searchLatitude, searchLongitude) <= radius)
+                {
+                    coordinatesInRange.Add(c);
+                }
+                else
+                {
+                    coordinatesOutOfRange.Add(c);
+                }
+            }
+
+            JObject json = JObject.FromObject(
+                new
+                {
+                    Boxhash = hash,
+                    CoordinatesInRange = coordinatesInRange,
+                    CoordinatesOutOfRange = coordinatesOutOfRange
+                }
+            );
+
+            return json;
+        }
+
 
         /**
         * Bounding Circle
@@ -401,7 +450,9 @@ namespace geohash
 
         /**
          * Get all coordinates in this level only
-         * 
+         *
+         * Return coordinates array
+         * @param {string} hash of the box
          */
         private Coordinates[] GetCoordinates(string hash)
         {

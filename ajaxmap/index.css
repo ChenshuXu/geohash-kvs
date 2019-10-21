@@ -1,23 +1,40 @@
+p {
+    margin: 0.2em;
+}
+
 .container {
     width:100%;
-    height: 600px;
+    height: 800px;
     display:block;
     margin: auto;
 }
 
 .map {
     width:60%;
-    height: 600px;
+    height: 800px;
     display:block;
     float: left;
 }
 .map_info {
+    box-sizing: border-box;
     width:40%;
-    height: 600px;
+    height: 800px;
     display:block;
     background: #fff9ea;
     float: right;
 }
 .input_area {
+    box-sizing: border-box;
+    height: 200px;
     padding: 1em;
+    border: 3px solid lightslategrey;
+}
+
+.info_area {
+    box-sizing: border-box;
+    height: 600px;
+    padding: 1em;
+    overflow: scroll;
+    border: 3px solid lightslategrey;
+    border-top: 0;
 }

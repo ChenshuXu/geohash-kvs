@@ -1,6 +1,8 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using Microsoft.AspNetCore.Mvc;
+using Newtonsoft.Json;
 using NGeoHash;
 using server.Models;
 
@@ -29,61 +31,79 @@ namespace server.Controllers
             //return new string[] { "value1", "value2", _dbInterface.GetDBinfo() };
         }
 
-        // POST /coordinates
-        [Route("coordinates")]
+        // POST /CircleSearchCoordinates
+        [Route("CircleSearchCoordinates")]
         [HttpPost]
-        public IEnumerable<Coordinates> GetCoordinates([FromBody]CircleSearchRequestModelClass data)
+        public IEnumerable<Coordinates> GetCircleSearchCoordinates([FromBody]CircleSearchRequestModelClass data)
         {
-            double lat = data.lat;
-            double lon = data.lon;
-            double range = data.range;
-            int level = data.level;
-            int limit = data.limit;
+            double lat = data.Lat;
+            double lon = data.Lon;
+            double range = data.Range;
+            int level = data.Level;
+            int limit = data.Limit;
 
             var db = _dbInterface.GetDatabase();
             return db.BcircleCoordinates(lat, lon, range, level, limit).ToArray();
         }
 
-        // POST /coordinatesBboxes
-        [Route("coordinatesBboxes")]
+        // POST /CircleSearchBboxes
+        [Route("CircleSearchBboxes")]
         [HttpPost]
-        public IEnumerable<BoundingBox> GetBboxes([FromBody]CircleSearchRequestModelClass data)
+        public IEnumerable<BoundingBox> GetCircleSearchBboxes([FromBody]CircleSearchRequestModelClass data)
         {
-            double lat = data.lat;
-            double lon = data.lon;
-            double range = data.range;
-            int level = data.level;
+            double lat = data.Lat;
+            double lon = data.Lon;
+            double range = data.Range;
+            int level = data.Level;
 
             return geohash.DataBase.BcircleBoxes(lat, lon, range, level);
         }
 
-        // POST /BboxCoordinates
-        [Route("BboxCoordinates")]
+        // POST /DisplayBoundingCircleSearchProcess
+        [Route("DisplayBoundingCircleSearchProcess")]
         [HttpPost]
-        public IEnumerable<Coordinates> BboxCoordinates([FromBody]BoxSearchRequestClass data)
+        public string GetBoundingCircleSearchProcess([FromBody]CircleSearchDisplayRequestModelClass data)
         {
-            double maxLat = data.maxlat;
-            double maxLon = data.maxlon;
-            double minLat = data.minlat;
-            double minLon = data.minlon;
-            int level = data.level;
+            double selectLat = data.SelectLat;
+            double selectLon = data.SelectLon;
+            double lat = data.SearchLat;
+            double lon = data.SearchLon;
+            double range = data.Range;
+            int level = data.Level;
+
+            var db = _dbInterface.GetDatabase();
+            return JsonConvert.SerializeObject(db.DisplayBoundingCircleSearchProcess(selectLat, selectLon, lat, lon, range, level));
+        }
+
+        // POST /BoxSearchCoordinates
+        [Route("BoxSearchCoordinates")]
+        [HttpPost]
+        public IEnumerable<Coordinates> GetBoxSearchCoordinates([FromBody]BoxSearchRequestClass data)
+        {
+            double maxLat = data.Maxlat;
+            double maxLon = data.Maxlon;
+            double minLat = data.Minlat;
+            double minLon = data.Minlon;
+            int level = data.Level;
 
             var db = _dbInterface.GetDatabase();
             return db.BboxCoordinates(minLat, minLon, maxLat, maxLon, level);
         }
 
-        // POST /BboxBoxes
-        [Route("BboxBoxes")]
+        // POST /BoxSearchBboxes
+        [Route("BoxSearchBboxes")]
         [HttpPost]
-        public IEnumerable<BoundingBox> BboxBoxes([FromBody]BoxSearchRequestClass data)
+        public IEnumerable<BoundingBox> GetBoxSearchBboxes([FromBody]BoxSearchRequestClass data)
         {
-            double maxLat = data.maxlat;
-            double maxLon = data.maxlon;
-            double minLat = data.minlat;
-            double minLon = data.minlon;
-            int level = data.level;
+            double maxLat = data.Maxlat;
+            double maxLon = data.Maxlon;
+            double minLat = data.Minlat;
+            double minLon = data.Minlon;
+            int level = data.Level;
 
             return geohash.DataBase.BboxBoxes(minLat, minLon, maxLat, maxLon, level);
         }
+
+        
     }
 }

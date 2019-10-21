@@ -26,10 +26,10 @@ function AjaxMap2(mapid)
 
 AjaxMap2.prototype.configMap = function()
 {
-    var that = this;
+    let that = this;
     
     // popup
-    // var popup = L.popup();
+    // let popup = L.popup();
     // function onMapClick(e) {
     //     popup
     //         .setLatLng(e.latlng)
@@ -39,8 +39,8 @@ AjaxMap2.prototype.configMap = function()
     // this.map.on('click', onMapClick);
 
     // update the value on the level input slider
-    var slider = document.getElementById("map2_input_level");
-    var output = document.getElementById("map2_input_level_value");
+    let slider = document.getElementById("map2_input_level");
+    let output = document.getElementById("map2_input_level_value");
     output.innerHTML = slider.value;
     this.level = Number(slider.value); // get initial value
     slider.oninput = function() {
@@ -58,12 +58,12 @@ AjaxMap2.prototype.configMap = function()
 
 AjaxMap2.prototype.updateMap = function ()
 {
-    var that = this;
+    let that = this;
 
     // clear previous map elements
     this.layerGroup.clearLayers();
 
-    var bounds = this.map.getBounds();
+    let bounds = this.map.getBounds();
     this.minCoor = bounds.getSouthWest();
     this.maxCoor = bounds.getNorthEast();
 
@@ -75,15 +75,15 @@ AjaxMap2.prototype.updateMap = function ()
     document.getElementById("map2_input_level").value = this.level;
     document.getElementById("map2_input_level_value").innerHTML = this.level;
 
-    var request = new Object();
-    request.maxlat = this.maxCoor.lat;
-    request.maxlon = this.maxCoor.lng;
-    request.minlat = this.minCoor.lat;
-    request.minlon = this.minCoor.lng;
-    request.level = this.level;
+    let request = new Object();
+    request.Maxlat = this.maxCoor.lat;
+    request.Maxlon = this.maxCoor.lng;
+    request.Minlat = this.minCoor.lat;
+    request.Minlon = this.minCoor.lng;
+    request.Level = this.level;
     console.log('box request server: '+ JSON.stringify(request));
     $.ajax({
-        url: "https://localhost:5001/BboxCoordinates",
+        url: "https://localhost:5001/BoxSearchCoordinates",
         method: "POST",
         contentType: "application/json",
         data: JSON.stringify(request),
@@ -98,7 +98,7 @@ AjaxMap2.prototype.updateMap = function ()
     });
 
     $.ajax({
-        url: "https://localhost:5001/BboxBoxes",
+        url: "https://localhost:5001/BoxSearchBboxes",
         method: "POST",
         contentType: "application/json",
         data: JSON.stringify(request),
@@ -114,10 +114,10 @@ AjaxMap2.prototype.updateMap = function ()
 
 AjaxMap2.prototype.drawCoordinates = function(coordinates)
 {
-    var i;
+    let i;
     for (i=0; i<coordinates.length; i++)
     {
-        var c = coordinates[i]
+        let c = coordinates[i]
         L.marker([c.lat, c.lon]).addTo(this.layerGroup)
         .bindPopup(c.id+','+c.locationDescription+','+c.description)
     }
@@ -126,19 +126,19 @@ AjaxMap2.prototype.drawCoordinates = function(coordinates)
 // takes in an array of bounding box json
 AjaxMap2.prototype.drawBoundingBoxes = function(boxes)
 {
-    var i;
+    let i;
     for (i=0; i<boxes.length; i++)
     {
-        var max = boxes[i].maximum;
-        var min = boxes[i].minimum;
-        var bounds = [[min.lat, min.lon],[max.lat, max.lon]];
+        let max = boxes[i].maximum;
+        let min = boxes[i].minimum;
+        let bounds = [[min.lat, min.lon],[max.lat, max.lon]];
         L.rectangle(bounds, {color: "#ff7800", weight: 3}).addTo(this.layerGroup);
     }
 }
 
 function parse_json(json) {
     try {
-        var data = $.parseJSON(json);
+        let data = $.parseJSON(json);
     } catch(err) {
         throw "JSON parse error: " + json;
     }

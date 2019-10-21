@@ -102,16 +102,23 @@ namespace geohash
             KMLGenerator.GenerateKMLcoordinates(c2, "box coordinates");
 
             ///
+            /// Display search process
+            ///
+
+
+            ///
             /// Test get coordinates in bounding circle
             /// 
             var watch = System.Diagnostics.Stopwatch.StartNew();
-            var c = database.BcircleCoordinates(mLat, mLon, mRadius, mLevel, mLimit);
+            Coordinates[] c = database.BcircleCoordinates(mLat, mLon, mRadius, mLevel, mLimit);
             watch.Stop();
             var elapsedMs = watch.ElapsedMilliseconds;
             Console.WriteLine("BcircleCoordinates, Time elapsed: " + elapsedMs + " ms | " + c.Length + " results get");
             KMLGenerator.GenerateKMLcoordinates(c, "circle coordinates");
 
-            
+            ///
+            /// Display search process
+            ///
         }
 
         static void AddDatasetSmall(DataBase database)
