@@ -1,5 +1,5 @@
 p {
-    margin: 0.2em;
+    margin: 0.3em;
 }
 
 .container {
@@ -22,6 +22,19 @@ p {
     display:block;
     background: #fff9ea;
     float: right;
+}
+table {
+    border-collapse: collapse;
+}
+  
+td, th {
+    border: 1px solid #dddddd;
+    text-align: left;
+    padding: 2px;
+}
+
+tr:nth-child(even) {
+    background-color: #dddddd;
 }
 .input_area {
     box-sizing: border-box;
