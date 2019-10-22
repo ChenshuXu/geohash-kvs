@@ -34,9 +34,9 @@
     <div class="map" id="map1"></div>
     <div class="map_info">
         <div class="input_area">
-            <h>
+            <p>
                 Lat Lon Range search
-            </h>
+            </p>
             <p>
                 Lat: <input type='text' id='input_lat' value="41.87476071">
                 Lon: <input type='text' id="input_lon" value="-87.67198792">
@@ -54,9 +54,12 @@
             <p>
                 <span id="map1_coordinates_count"></span>
             </p>
-            <p id='message'>&nbsp;</p>
+            <p id='message'></p>
+            <input id="map1_search" type="submit" value="Search">
         </div>
-        <div class="info_area" id="map1_info"></div>
+        <div class="info_area" id="map1_info">
+
+        </div>
     </div>
 </div>
 
@@ -84,8 +87,11 @@
         <p>
             <span id="map2_coordinates_count"></span>
         </p>
+        <input id="map2_search" type="submit" value="Search">
     </div>
-    <div class="info_area" id="map2_info"></div>
+    <div class="info_area" id="map2_info">
+
+    </div>
 </div>
 </div>
 </html>

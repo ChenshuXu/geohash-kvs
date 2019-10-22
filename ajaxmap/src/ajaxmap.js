@@ -22,7 +22,6 @@ function AjaxMap(mapid)
     }).addTo(this.map);
 
     this.configMap();
-    this.updateMap();
 }
 
 AjaxMap.prototype.configMap = function()
@@ -60,7 +59,6 @@ AjaxMap.prototype.configMap = function()
             return;
         }
         that.lat = Number(lat.value);
-        that.updateMap();
     };
 
     lon.oninput = function(event) {
@@ -71,7 +69,6 @@ AjaxMap.prototype.configMap = function()
             return;
         }
         that.lon = Number(lon.value);
-        that.updateMap();
     };
 
     range.oninput = function(event) {
@@ -82,7 +79,6 @@ AjaxMap.prototype.configMap = function()
             return;
         }
         that.range = Number(range.value);
-        that.updateMap();
     };
 
     limit.oninput = function(event) {
@@ -93,7 +89,6 @@ AjaxMap.prototype.configMap = function()
             return;
         }
         that.limit = Number(limit.value);
-        that.updateMap();
     };
 
     // update the value on the level input slider
@@ -103,8 +98,12 @@ AjaxMap.prototype.configMap = function()
     slider.oninput = function() {
         output.innerHTML = this.value;
         that.level = Number(this.value);
-        that.updateMap();
     };
+
+    document.getElementById("map1_search").onclick = function(event) {
+        console.log(event);
+        that.updateMap();
+    }
 }
 
 AjaxMap.prototype.updateMap = function()
@@ -204,7 +203,7 @@ AjaxMap.prototype.onClickMarker = function(c)
             console.log("select hash " + result.Boxhash);
             hash = result.Boxhash;
             coordinatesOutOfRange.forEach(element => {
-                L.marker([element.Lat, element.Lon], {opacity:0.6}).addTo(that.tempLayerGroup);
+                L.marker([element.Lat, element.Lon], {opacity:0.5}).addTo(that.tempLayerGroup);
             });
         },
         error: function(jqxhr, status, exception) {
@@ -214,15 +213,14 @@ AjaxMap.prototype.onClickMarker = function(c)
 
     let html = `
 <p>
-selected marker ${c.lat}, ${c.lon}
-</p>
-<p>
-${c.id}, ${c.locationDescription}, ${c.description}
+selected marker ${c.lat}, ${c.lon}, ${c.id}, ${c.locationDescription}, ${c.description}
 </p>
 `;
     
     document.getElementById("map1_info").innerHTML = html;
 }
+
+
 
 // takes in an array of coordinates json
 AjaxMap.prototype.drawCoordinates = function(coordinates)

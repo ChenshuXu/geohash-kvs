@@ -21,7 +21,6 @@ function AjaxMap2(mapid)
     }).addTo(this.map);
 
     this.configMap();
-    this.updateMap();
 }
 
 AjaxMap2.prototype.configMap = function()
@@ -46,7 +45,7 @@ AjaxMap2.prototype.configMap = function()
     slider.oninput = function() {
         output.innerHTML = slider.value;
         that.level = Number(this.value);
-        that.updateMap();
+        //that.updateMap();
     };
 
     // update map when move ends
@@ -54,6 +53,11 @@ AjaxMap2.prototype.configMap = function()
         that.updateMap();
     }
     this.map.on("moveend", onMapMove);
+
+    // update map when click on search button
+    document.getElementById("map2_search").onclick = function(event) {
+        that.updateMap();
+    }
 }
 
 AjaxMap2.prototype.updateMap = function ()
