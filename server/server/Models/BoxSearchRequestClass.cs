@@ -10,4 +10,16 @@ namespace server.Models
         public int Level { get; set; }
         public int Limit { get; set; }
     }
+
+    public class BoxSearchDisplayRequestModelClass
+    {
+        public double SelectLat { set; get; }
+        public double SelectLon { set; get; }
+        public double SearchMaxLat { get; set; }
+        public double SearchMaxLon { get; set; }
+        public double SearchMinLat { get; set; }
+        public double SearchMinLon { get; set; }
+        public int Level { get; set; }
+        public int Limit { get; set; }
+    }
 }

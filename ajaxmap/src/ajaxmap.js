@@ -1,6 +1,5 @@
 'use strict';
-function AjaxMap(mapid) 
-{
+function AjaxMap(mapid) {
     console.log('map started');
 
     this.lat = 41.87476071;
@@ -12,6 +11,8 @@ function AjaxMap(mapid)
     // setup basic map
     this.map = L.map(mapid).setView([this.lat, this.lon], 15);
     this.layerGroup = L.layerGroup().addTo(this.map);
+    this.bboxLayerGroup = L.layerGroup().addTo(this.map); // layer group for bbox
+    this.coordinatesLayerGroup = L.layerGroup().addTo(this.map); // layger group for coordinates
     this.tempLayerGroup = L.layerGroup().addTo(this.map);
     L.tileLayer('https://api.tiles.mapbox.com/v4/{id}/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NXVycTA2emYycXBndHRqcmZ3N3gifQ.rJcFIG214AriISLbB6B5aw', {
         maxZoom: 18,
@@ -24,8 +25,7 @@ function AjaxMap(mapid)
     this.configMap();
 }
 
-AjaxMap.prototype.configMap = function()
-{
+AjaxMap.prototype.configMap = function() {
     let that = this;
 
     // popup
@@ -103,23 +103,17 @@ AjaxMap.prototype.configMap = function()
     };
 
     document.getElementById("map1_search").onclick = function(event) {
-        // update input area
-        document.getElementById("input_range").value = that.range;
-        document.getElementById("input_limit").value = that.limit;
-        document.getElementById("input_lat").value = that.lat;
-        document.getElementById("input_lon").value = that.lon;
-        document.getElementById("input_level").value = that.level;
-        document.getElementById("input_level_value").innerHTML = that.level;
         that.step0();
     }
 }
 
-AjaxMap.prototype.updateMap = function()
-{
+AjaxMap.prototype.updateMap = function() {
     //console.log('update with value: lat '+ this.lat + ' lon ' + this.lon + ' range ' + this.range + ' search level ' + this.level + ' limit ' + this.limit);
     document.getElementById("message").innerHTML = "";
     // clear map elements
     this.layerGroup.clearLayers();
+    this.bboxLayerGroup.clearLayers();
+    this.coordinatesLayerGroup.clearLayers();
     this.tempLayerGroup.clearLayers();
 
     // update input area
@@ -143,7 +137,7 @@ AjaxMap.prototype.updateMap = function()
 
     // draw coordinates
     let that = this;
-    let request = new Object();
+    let request = {};
     request.Lat = this.lat;
     request.Lon = this.lon;
     request.Range = this.range;
@@ -182,12 +176,20 @@ AjaxMap.prototype.updateMap = function()
 }
 
 // step0 draw circle
-AjaxMap.prototype.step0 = function()
-{
+AjaxMap.prototype.step0 = function() {
     let that = this;
+    // update input area
+    document.getElementById("input_range").value = that.range;
+    document.getElementById("input_limit").value = that.limit;
+    document.getElementById("input_lat").value = that.lat;
+    document.getElementById("input_lon").value = that.lon;
+    document.getElementById("input_level").value = that.level;
+    document.getElementById("input_level_value").innerHTML = that.level;
     document.getElementById("message").innerHTML = "";
     // clear map elements
     this.layerGroup.clearLayers();
+    this.bboxLayerGroup.clearLayers();
+    this.coordinatesLayerGroup.clearLayers();
     this.tempLayerGroup.clearLayers();
 
     // draw center
@@ -213,11 +215,10 @@ AjaxMap.prototype.step0 = function()
 }
 
 // step1 draw boxes
-AjaxMap.prototype.step1 = function()
-{
+AjaxMap.prototype.step1 = function() {
     let that = this;
 
-    let request = new Object();
+    let request = {};
     request.Lat = this.lat;
     request.Lon = this.lon;
     request.Range = this.range;
@@ -252,10 +253,9 @@ AjaxMap.prototype.step1 = function()
 }
 
 // step2 draw coordinates
-AjaxMap.prototype.step2 = function() 
-{
+AjaxMap.prototype.step2 = function() {
     let that = this;
-    let request = new Object();
+    let request = {};
     request.Lat = this.lat;
     request.Lon = this.lon;
     request.Range = this.range;
@@ -280,12 +280,46 @@ AjaxMap.prototype.step2 = function()
     $("#map1_info").append(html);
 }
 
-AjaxMap.prototype.onClickMarker = function(c)
-{
+// takes in an array of coordinates json
+AjaxMap.prototype.drawCoordinates = function(coordinates) {
+    let that = this;
+    console.log(coordinates.length + " coordinates returned");
+    let table = document.createElement("table");
+    let header = table.createTHead();
+    let headerRow = header.insertRow();
+    headerRow.insertCell().innerHTML = "Coordinates";
+    headerRow.insertCell().innerHTML = "Location Description";
+    headerRow.insertCell().innerHTML = "Description";
+    let body = table.createTBody();
+    let row = body.insertRow();
+
+    for (let i=0; i<coordinates.length; i++)
+    {
+        let c = coordinates[i];
+        let marker = L.marker([c.lat, c.lon]).addTo(that.coordinatesLayerGroup)
+            .bindPopup(c.id+','+c.locationDescription+','+c.description)
+            .on("click", function(ev) {
+                that.onClickMarker(c);
+            });
+
+        row.insertCell().innerHTML = c.lat+","+c.lon;
+        row.insertCell().innerHTML = c.locationDescription;
+        row.insertCell().innerHTML = c.description;
+        row.onclick = function(event) {
+            //console.log(event);
+            that.onClickMarker(c);
+            marker.openPopup();
+        };
+        row = body.insertRow();
+    }
+    document.getElementById("map1_coordinates_info").appendChild(table);
+}
+
+AjaxMap.prototype.onClickMarker = function(c) {
     this.tempLayerGroup.clearLayers();
     var that = this;
     //console.log(c);
-    let request = new Object();
+    let request = {};
     request.SearchLat = this.lat;
     request.SearchLon = this.lon;
     request.SelectLat = c.lat;
@@ -293,9 +327,6 @@ AjaxMap.prototype.onClickMarker = function(c)
     request.Range = this.range;
     request.Level = this.level;
 
-    var coordinatesInRange;
-    var coordinatesOutOfRange;
-    var hash;
     $.ajax({
         url: "https://localhost:5001/DisplayBoundingCircleSearchProcess",
         method: "POST",
@@ -303,91 +334,68 @@ AjaxMap.prototype.onClickMarker = function(c)
         data: JSON.stringify(request),
         success: function(data) {
             let result = JSON.parse(data);
-            console.log(result.CoordinatesInRange.length + " in range");
-            coordinatesInRange = result.CoordinatesInRange;
-            console.log(result.CoordinatesOutOfRange.length + " out of range");
-            coordinatesOutOfRange = result.CoordinatesOutOfRange;
-            console.log("select hash " + result.Boxhash);
-            hash = result.Boxhash;
+            //console.log(result.CoordinatesInRange.length + " in range");
+            let coordinatesInRange = result.CoordinatesInRange;
+            //console.log(result.CoordinatesOutOfRange.length + " out of range");
+            let coordinatesOutOfRange = result.CoordinatesOutOfRange; //console.log("select hash " + result.Boxhash);
+            let hash = result.Boxhash;
             coordinatesOutOfRange.forEach(element => {
                 L.marker([element.Lat, element.Lon], {opacity:0.5}).addTo(that.tempLayerGroup);
             });
+            document.getElementById("message").innerHTML = `<p>
+selected marker in box ${hash}, ${coordinatesInRange.length} coordinates are in side, ${coordinatesOutOfRange.length} coordinates are out side
+</p>
+`;
         },
         error: function(jqxhr, status, exception) {
             console.log("error get "+ jqxhr + status + exception);
         }
     });
-
-    let html = `<p>
-selected marker ${c.lat}, ${c.lon}, ${c.id}, ${c.locationDescription}, ${c.description}
-</p>
-`;
-    $("#map1_info").append(html);
-}
-
-
-
-// takes in an array of coordinates json
-AjaxMap.prototype.drawCoordinates = function(coordinates)
-{
-    let that = this;
-    console.log(coordinates.length + " coordinates returned");
-    let html = `<table><tr>
-<th>Coordinates</th>
-<th>Location Description</th>
-<th>Description</th>
-</tr>`;
-    for (let i=0; i<coordinates.length; i++)
-    {
-        let c = coordinates[i];
-        L.marker([c.lat, c.lon]).addTo(that.layerGroup)
-        .bindPopup(c.id+','+c.locationDescription+','+c.description)
-        .on("click", function(ev) {
-            that.onClickMarker(c);
-        });
-
-        html += `<tr>
-<td>${c.lat},${c.lon}</td>
-<td>${c.locationDescription}</td>
-<td>${c.description}</td>
-</tr>`;
-    }
-    html += "</table>";
-    document.getElementById("map1_coordinates_info").innerHTML = html;
+    this.map.panTo([c.lat, c.lon]);
 }
 
 // takes in an array of bounding box json
-AjaxMap.prototype.drawBoundingBoxes = function(boxes)
-{
-    let that = this;
-    var html = "<table>";
-    html += `<tr>
-<th>BoxHash</th>
-<th>Max</th>
-<th>Min</th>
-</tr>`;
+AjaxMap.prototype.drawBoundingBoxes = function(boxes) {
     console.log(boxes.length + " boxes returned");
+    let that = this;
+    let table = document.createElement("table");
+    let header = table.createTHead();
+    let headerRow = header.insertRow();
+    headerRow.insertCell().innerHTML = "BoxHash";
+    headerRow.insertCell().innerHTML = "Max";
+    headerRow.insertCell().innerHTML = "Min";
+    let body = table.createTBody();
+    let row = body.insertRow();
+
     for (let i=0; i<boxes.length; i++)
     {
         let box = boxes[i];
         let max = box.maximum;
         let min = box.minimum;
         let hash = box.hash;
-        let bounds = [[min.lat, min.lon],[max.lat, max.lon]];
+        let bounds = L.latLngBounds(L.latLng(min.lat, min.lon),L.latLng(max.lat, max.lon));
 
         L.rectangle(bounds, {color: "#ff8e2c", weight: 2})
-        .bindTooltip(hash,{permanent:true, direction:"center", opacity:0.6})
-        .on('click', function(ev){
-            that.map.fitBounds(bounds);
-        })
-        .openTooltip().addTo(this.layerGroup);
+            .bindTooltip(hash,{permanent:true, direction:"center", opacity:0.6})
+            .openTooltip()
+            .on('click', function(ev){
+                that.onClickBox(bounds);
+            })
+            .addTo(this.bboxLayerGroup);
 
-        html += `<tr>
-<td>${hash}</td>
-<td>${max.lat},${max.lon}</td>
-<td>${min.lat},${min.lon}</td>
-</tr>`;
+        row.insertCell().innerHTML = hash;
+        row.insertCell().innerHTML = `${max.lat},${max.lon}`;
+        row.insertCell().innerHTML = `${min.lat},${min.lon}`;
+        row.onclick = function(event) {
+            //console.log(event);
+            that.onClickBox(bounds);
+        };
+        row = body.insertRow();
     }
-    html += "</table>";
-    document.getElementById("map1_bbox_info").innerHTML = html;
+    document.getElementById("map1_bbox_info").appendChild(table);
+}
+
+AjaxMap.prototype.onClickBox = function(bounds) {
+    this.map.fitBounds(bounds);
+    this.map.panTo(bounds.getCenter());
 }

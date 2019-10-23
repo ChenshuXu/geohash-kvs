@@ -123,14 +123,32 @@ namespace geohash
             }
         }
 
-        public JObject DisplayBoundingBoxSearchProcess(double selectLatitude, double selectLongitude, int level = 9)
+        public JObject DisplayBoundingBoxSearchProcess(Coordinates select, Coordinates searchMax, Coordinates searchMin, int level = 9)
         {
-            string hash = GeoHash.Encode(selectLatitude, selectLongitude, level);
+            string hash = GeoHash.Encode(select.Lat, select.Lon, level);
+
+            // get all other points(out of range) in box
+            Coordinates[] allCoordinates = GetCoordinates(hash);
+            List<Coordinates> coordinatesInRange = new List<Coordinates>();
+            List<Coordinates> coordinatesOutOfRange = new List<Coordinates>();
+            foreach (Coordinates c in allCoordinates)
+            {
+                if (CoordinateInBoxRange(c, searchMin.Lat, searchMin.Lon, searchMax.Lat, searchMax.Lon))
+                {
+                    coordinatesInRange.Add(c);
+                }
+                else
+                {
+                    coordinatesOutOfRange.Add(c);
+                }
+            }
 
             JObject json = JObject.FromObject(
                 new
                 {
-                    Boxhash = hash
+                    Boxhash = hash,
+                    CoordinatesInRange = coordinatesInRange,
+                    CoordinatesOutOfRange = coordinatesOutOfRange
                 }
             );
 

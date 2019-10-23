@@ -104,6 +104,17 @@ namespace server.Controllers
             return geohash.DataBase.BboxBoxes(minLat, minLon, maxLat, maxLon, level);
         }
 
-        
+        // POST /DisplayBoundingBoxSearchProcess
+        [Route("DisplayBoundingBoxSearchProcess")]
+        [HttpPost]
+        public string GetBoundingBoxSearchProcess([FromBody]BoxSearchDisplayRequestModelClass data)
+        {
+            Coordinates select = new Coordinates { Lat = data.SelectLat, Lon = data.SelectLon };
+            Coordinates max = new Coordinates { Lat = data.SearchMaxLat, Lon = data.SearchMaxLon };
+            Coordinates min = new Coordinates { Lat = data.SearchMinLat, Lon = data.SearchMinLon };
+
+            var db = _dbInterface.GetDatabase();
+            return JsonConvert.SerializeObject(db.DisplayBoundingBoxSearchProcess(select, max, min, data.Level));
+        }
     }
 }
