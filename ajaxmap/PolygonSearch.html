@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+    <title>Polygon search</title>
+
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link rel="shortcut icon" type="image/x-icon" href="docs/images/favicon.ico" />
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.5.1/dist/leaflet.css" integrity="sha512-xwE/Az9zrjBIphAcBb3F6JVqxf46+CDLwfLMHloNu6KEQCAWi6HcDUbeOfBIptF7tcCzusKFjFw2yuvEpDL9wQ==" crossorigin=""/>
+    <link rel="stylesheet" href="index.css">
+    <link rel="stylesheet" href="/node_modules/leaflet-draw/dist/leaflet.draw.css">
+    <script src="node_modules/leaflet/dist/leaflet.js"></script>
+    <script src="node_modules/jquery/dist/jquery.min.js"></script>
+    <script src="node_modules/leaflet-draw/dist/leaflet.draw.js"></script>
+    <script src="src/ajaxmap3.js"></script>
+
+    <script>
+        $(document).ready(function () {
+            new AjaxMap3("map3");
+        })
+    </script>
+
+</head>
+
+<h1>Polygon search</h1>
+<div class="map" id="map3"></div>
+<div class="map_info">
+    <div class="input_area">
+        <h>
+            Polygon search
+        </h>
+        <p>
+            search level: <input type="range" id="map3_input_level" min="1" max="9" value="6">
+            Value: <span id="map3_input_level_value"></span>
+        </p>
+        <p>
+            <span id="map3_coordinates_count"></span>
+        </p>
+        <div id='map3_message'></div>
+        <input id="map3_search" type="submit" value="Start">
+    </div>
+    <div class="info_area" id="map3_info"></div>
+</div>
+
+</html>

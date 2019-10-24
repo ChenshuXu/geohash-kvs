@@ -1,5 +1,5 @@
-function AjaxMap2(mapid)
-{
+'use strict';
+function AjaxMap2(mapid) {
     console.log('map2 started');
 
     this.lat = 41.87476071;
@@ -26,8 +26,7 @@ function AjaxMap2(mapid)
     this.configMap();
 }
 
-AjaxMap2.prototype.configMap = function()
-{
+AjaxMap2.prototype.configMap = function() {
     let that = this;
 
     // update the value on the level input slider
