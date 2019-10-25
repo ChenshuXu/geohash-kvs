@@ -116,5 +116,22 @@ namespace server.Controllers
             var db = _dbInterface.GetDatabase();
             return JsonConvert.SerializeObject(db.DisplayBoundingBoxSearchProcess(select, max, min, data.Level));
         }
+
+        // POST /PolygonSearchCoordinates
+        [Route("PolygonSearchCoordinates")]
+        [HttpPost]
+        public IEnumerable<Coordinates> GetPolygonSearchCoordinates([FromBody]PolygonSearchRequestModelClass data)
+        {
+            var db = _dbInterface.GetDatabase();
+            return db.BpolygonCoordinates(data.Vertices, data.Level);
+        }
+
+        // POST /PolygonSearchBoxes
+        [Route("PolygonSearchBoxes")]
+        [HttpPost]
+        public IEnumerable<BoundingBox> GetPolygonSearchBoxes([FromBody]PolygonSearchRequestModelClass data)
+        {
+            return geohash.DataBase.BpolygonBoxes(data.Vertices, data.Level);
+        }
     }
 }

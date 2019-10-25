@@ -17,9 +17,10 @@ namespace geohash
 
         public static void Main(string[] args)
         {
-            CrimeDataTest();
-            BoundingBoxTest();
-            BoundingCircleTest();
+            //CrimeDataTest();
+            //BoundingBoxTest();
+            //BoundingCircleTest();
+            BoundingPolygonTest();
         }
 
         public static void BoundingBoxTest()
@@ -119,6 +120,44 @@ namespace geohash
             ///
             /// Display search process
             ///
+        }
+
+        public static void BoundingPolygonTest()
+        {
+            Coordinates[] polygon1 = { 
+                new Coordinates { Lat = 0, Lon = 0 },
+                new Coordinates { Lat = 10, Lon = 0 },
+                new Coordinates { Lat = 10, Lon = 10 },
+                new Coordinates { Lat = 0, Lon = 10 }
+            };
+            Coordinates p = new Coordinates { Lat = 20, Lon = 20 };
+            Console.WriteLine(DataBase.PointInPolygon(p, polygon1));
+
+            p = new Coordinates { Lat = 5, Lon = 5 };
+            Console.WriteLine(DataBase.PointInPolygon(p, polygon1));
+
+            Coordinates[] polygon2 = { 
+                new Coordinates { Lon = 0, Lat = 0 },
+                new Coordinates { Lon = 5, Lat = 5 },
+                new Coordinates { Lon = 5, Lat = 0 }
+            };
+            p = new Coordinates { Lon = 3, Lat = 3 };
+            Console.WriteLine(DataBase.PointInPolygon(p, polygon2));
+
+            p = new Coordinates { Lon = 5, Lat = 1 };
+            Console.WriteLine(DataBase.PointInPolygon(p, polygon2));
+
+            p = new Coordinates { Lon = 8, Lat = 1};
+            Console.WriteLine(DataBase.PointInPolygon(p, polygon2));
+
+            Coordinates[] polygon3 = {
+                new Coordinates { Lon = 0, Lat = 0 },
+                new Coordinates { Lon = 10, Lat = 0 },
+                new Coordinates { Lon = 10, Lat = 10 },
+                new Coordinates { Lon = 0, Lat = 10 }
+            };
+            p = new Coordinates { Lon = -1, Lat = 10 };
+            Console.WriteLine(DataBase.PointInPolygon(p, polygon3));
         }
 
         static void AddDatasetSmall(DataBase database)

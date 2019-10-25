@@ -1,7 +1,7 @@
 p {
     margin: 0.3em;
 }
-h1 {
+h1, h2 {
     text-align: center;
 }
 .container {
@@ -19,11 +19,14 @@ h1 {
 }
 .map_info {
     box-sizing: border-box;
+    border: 3px solid lightslategrey;
     width:40%;
     height: 800px;
     display:block;
     background: #fff9ea;
     float: right;
+    overflow: scroll;
+    padding: 1em;
 }
 table {
     border-collapse: collapse;

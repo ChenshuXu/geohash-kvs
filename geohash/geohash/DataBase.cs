@@ -301,21 +301,6 @@ namespace geohash
         }
 
         /**
-        * Bounding Polygon
-        *
-        * Return all the hashString covered by the polygon in numberOfChars
-        * @param {Coordinates[]} list of edge coordinates of the polygon
-        * @param {int} numberOfChars
-        * @returns {string[]}
-        */
-        public static string[] Bpolygon(Coordinates[] coordinates, int numberOfChars = 9)
-        {
-            var hashList = new List<string>();
-
-            return hashList.ToArray();
-        }
-
-        /**
         * Bounding Circle Coordinates
         *
         * Return all coordinates covered by the circle in numberOfChars
@@ -585,6 +570,166 @@ namespace geohash
             double north = Measure(box.Maximum.Lat, box.Maximum.Lon, box.Maximum.Lat, box.Minimum.Lon);
 
             return Math.Min(Math.Min(west, east), Math.Min(north, south));
+        }
+
+
+        /**
+        * Bounding Polygon
+        *
+        * Return all the hashString covered by the polygon in numberOfChars
+        * @param {Coordinates[]}  
+        * @param {int} numberOfChars
+        * @returns {string[]}
+        */
+        public static string[] Bpolygon(Coordinates[] polygon, int numberOfChars = 9)
+        {
+            var hashList = new List<string>();
+            // Get all bounding boxes that are possible be covered by polygon
+            Coordinates max = new Coordinates { Lat = -90, Lon = -180 };
+            Coordinates min = new Coordinates { Lat = 90, Lon = 180 };
+            foreach (Coordinates c in polygon)
+            {
+                max.Lat = Math.Max(max.Lat, c.Lat);
+                max.Lon = Math.Max(max.Lon, c.Lon);
+                min.Lat = Math.Min(min.Lat, c.Lat);
+                min.Lon = Math.Min(min.Lon, c.Lon);
+            }
+            return GeoHash.Bboxes(min.Lat, min.Lon, max.Lat, max.Lon, numberOfChars);
+            return hashList.ToArray();
+        }
+
+        /**
+         * returns all bounding boxes covered by polygon
+         */
+        public static BoundingBox[] BpolygonBoxes(Coordinates[] polygon, int numberOfChars = 9)
+        {
+            var boxList = new List<BoundingBox>();
+            string[] hashList = Bpolygon(polygon, numberOfChars);
+            foreach(string hash in hashList)
+            {
+                boxList.Add(GeoHash.DecodeBbox(hash));
+            }
+            return boxList.ToArray();
+        }
+
+        /**
+        * Bounding polygon coordinates
+        *
+        * Return all the coordinates covered by the polygon
+        * @param {Coordinates[]} list of vertex coordinates of the polygon
+        * @param {int} numberOfChars
+        * @returns {Coordinates[]}
+        */
+        public Coordinates[] BpolygonCoordinates(Coordinates[] polygon, int numberOfChars = 9)
+        {
+            List<Coordinates> coorList = new List<Coordinates>();
+
+            List<Coordinates> coorInBbox = new List<Coordinates>();
+            string[] bbox = Bpolygon(polygon, numberOfChars);
+            foreach(var hash in bbox)
+            {
+                Coordinates[] coors = GetCoordinates(hash);
+                foreach(Coordinates c in coors)
+                {
+                    if (PointInPolygon(c, polygon))
+                    {
+                        coorList.Add(c);
+                    }
+                }
+            }
+
+            return coorList.ToArray();
+        }
+
+        public static Boolean PointInPolygon(Coordinates point, Coordinates[] polygon)
+        {
+            // There must be at least 3 vertices in polygon
+            if (polygon.Length < 3)
+            {
+                return false;
+            }
+            int n = polygon.Length;
+            // Create a point for line segment from p to infinite
+            Coordinates extreme = new Coordinates { Lat = 180, Lon = point.Lon};
+            // Count intersections of the above line with sides of polygon
+            int count = 0, i = 0;
+            do
+            {
+                int next = (i + 1) % n;
+
+                // Check if the line segment from 'p' to 'extreme' intersects 
+                // with the line segment from 'polygon[i]' to 'polygon[next]' 
+                if (doIntersect(polygon[i], polygon[next], point, extreme))
+                {
+                    // If the point 'p' is colinear with line segment 'i-next', 
+                    // then check if it lies on segment. If it lies, return true, 
+                    // otherwise false 
+                    if (orientation(polygon[i], point, polygon[next]) == 0)
+                        return onSegment(polygon[i], point, polygon[next]);
+
+                    count++;
+                }
+                i = next;
+            } while (i != 0);
+            // Return true if count is odd, false otherwise 
+            return count % 2 == 1;
+        }
+
+        // The function that returns true if line segment 'p1q1' 
+        // and 'p2q2' intersect. 
+        private static bool doIntersect(Coordinates p1, Coordinates q1, Coordinates p2, Coordinates q2)
+        {
+            // Find the four orientations needed for general and 
+            // special cases 
+            int o1 = orientation(p1, q1, p2);
+            int o2 = orientation(p1, q1, q2);
+            int o3 = orientation(p2, q2, p1);
+            int o4 = orientation(p2, q2, q1);
+
+            // General case 
+            if (o1 != o2 && o3 != o4)
+                return true;
+
+            // Special Cases 
+            // p1, q1 and p2 are colinear and p2 lies on segment p1q1 
+            if (o1 == 0 && onSegment(p1, p2, q1)) return true;
+
+            // p1, q1 and p2 are colinear and q2 lies on segment p1q1 
+            if (o2 == 0 && onSegment(p1, q2, q1)) return true;
+
+            // p2, q2 and p1 are colinear and p1 lies on segment p2q2 
+            if (o3 == 0 && onSegment(p2, p1, q2)) return true;
+
+            // p2, q2 and q1 are colinear and q1 lies on segment p2q2 
+            if (o4 == 0 && onSegment(p2, q1, q2)) return true;
+
+            return false; // Doesn't fall in any of the above cases 
+        }
+
+        // To find orientation of ordered triplet (p, q, r). 
+        // The function returns following values 
+        // 0 --> p, q and r are colinear 
+        // 1 --> Clockwise 
+        // 2 --> Counterclockwise 
+        private static int orientation(Coordinates p, Coordinates q, Coordinates r)
+        {
+            double val = (q.Lat - p.Lat) * (r.Lon - q.Lon) -
+              (q.Lon - p.Lon) * (r.Lat - q.Lat);
+
+            if (Math.Abs(val) < 0.000001f) return 0;  // colinear 
+            return (val > 0) ? 1 : 2; // clock or counterclock wise 
+        }
+
+        // Given three colinear points p, q, r, the function checks if 
+        // point q lies on line segment 'pr' 
+        private static bool onSegment(Coordinates p, Coordinates q, Coordinates r)
+        {
+            if (q.Lon <= Math.Max(p.Lon, r.Lon) && q.Lon >= Math.Min(p.Lon, r.Lon) &&
+                    q.Lat <= Math.Max(p.Lat, r.Lat) && q.Lat >= Math.Min(p.Lat, r.Lat))
+            {
+                return true;
+            }
+            return false;
         }
     }
 }
