@@ -123,7 +123,7 @@ namespace geohash
             }
         }
 
-        public JObject DisplayBoundingBoxSearchProcess(Coordinates select, Coordinates searchMax, Coordinates searchMin, int level = 9)
+        public JObject BoundingBoxSearchProcess(Coordinates select, Coordinates searchMax, Coordinates searchMin, int level = 9)
         {
             string hash = GeoHash.Encode(select.Lat, select.Lon, level);
 
@@ -155,7 +155,7 @@ namespace geohash
             return json;
         }
 
-        public JObject DisplayBoundingCircleSearchProcess(double selectLatitude, double selectLongitude, double searchLatitude, double searchLongitude, double radius, int level = 9)
+        public JObject BoundingCircleSearchProcess(double selectLatitude, double selectLongitude, double searchLatitude, double searchLongitude, double radius, int level = 9)
         {
             string hash = GeoHash.Encode(selectLatitude, selectLongitude, level);
 
@@ -594,12 +594,20 @@ namespace geohash
                 min.Lat = Math.Min(min.Lat, c.Lat);
                 min.Lon = Math.Min(min.Lon, c.Lon);
             }
-            return GeoHash.Bboxes(min.Lat, min.Lon, max.Lat, max.Lon, numberOfChars);
+            string[] bboxHash = GeoHash.Bboxes(min.Lat, min.Lon, max.Lat, max.Lon, numberOfChars);
+            foreach (string hash in bboxHash)
+            {
+                BoundingBox box = GeoHash.DecodeBbox(hash);
+                if (BoxInPolygon(box, polygon))
+                {
+                    hashList.Add(hash);
+                }
+            }
             return hashList.ToArray();
         }
 
         /**
-         * returns all bounding boxes covered by polygon
+         * Returns all bounding boxes covered by polygon in numberOfChars
          */
         public static BoundingBox[] BpolygonBoxes(Coordinates[] polygon, int numberOfChars = 9)
         {
@@ -624,7 +632,6 @@ namespace geohash
         {
             List<Coordinates> coorList = new List<Coordinates>();
 
-            List<Coordinates> coorInBbox = new List<Coordinates>();
             string[] bbox = Bpolygon(polygon, numberOfChars);
             foreach(var hash in bbox)
             {
@@ -639,6 +646,82 @@ namespace geohash
             }
 
             return coorList.ToArray();
+        }
+
+        public JObject BpolygonSearchProcess(Coordinates select, Coordinates[] polygon, int level)
+        {
+            string hash = GeoHash.Encode(select.Lat, select.Lon, level);
+            // get all other points(out of range) in box
+            Coordinates[] allCoordinates = GetCoordinates(hash);
+            List<Coordinates> coordinatesInRange = new List<Coordinates>();
+            List<Coordinates> coordinatesOutOfRange = new List<Coordinates>();
+            foreach (Coordinates c in allCoordinates)
+            {
+                if (PointInPolygon(c, polygon))
+                {
+                    coordinatesInRange.Add(c);
+                }
+                else
+                {
+                    coordinatesOutOfRange.Add(c);
+                }
+            }
+            JObject json = JObject.FromObject(
+                new
+                {
+                    Boxhash = hash,
+                    CoordinatesInRange = coordinatesInRange,
+                    CoordinatesOutOfRange = coordinatesOutOfRange
+                }
+            );
+
+            return json;
+        }
+
+        /**
+         * Check if box overlap with polygon
+         */
+        public static Boolean BoxInPolygon(BoundingBox box, Coordinates[] polygon)
+        {
+            Coordinates[] boxVertices = new Coordinates[] {
+                box.Maximum,
+                new Coordinates{ Lat=box.Maximum.Lat, Lon=box.Minimum.Lon },
+                box.Minimum,
+                new Coordinates{ Lat=box.Minimum.Lat, Lon=box.Maximum.Lon }
+            };
+            // Check polygon vertices in box
+            foreach (Coordinates c in boxVertices)
+            {
+                if (PointInPolygon(c, polygon))
+                {
+                    return true;
+                }
+            }
+            // Check box vertices in polygon
+            foreach (Coordinates c in polygon)
+            {
+                if (PointInPolygon(c, boxVertices))
+                {
+                    return true;
+                }
+            }
+            // Check intersection between box and polygon edges
+            int i = 0, n = polygon.Length, j = 0;
+            do
+            {
+                int next = (i + 1) % n;
+                do
+                {
+                    int next2 = (j + 1) % 4;
+                    if (doIntersect(polygon[i], polygon[next], boxVertices[j], boxVertices[next2]))
+                    {
+                        return true;
+                    }
+                    j = next2;
+                } while (j != 0);
+                i = next;
+            } while (i != 0);
+            return false;
         }
 
         public static Boolean PointInPolygon(Coordinates point, Coordinates[] polygon)
@@ -716,7 +799,7 @@ namespace geohash
             double val = (q.Lat - p.Lat) * (r.Lon - q.Lon) -
               (q.Lon - p.Lon) * (r.Lat - q.Lat);
 
-            if (Math.Abs(val) < 0.000001f) return 0;  // colinear 
+            if (Math.Abs(val) < 0.000000001f) return 0;  // colinear 
             return (val > 0) ? 1 : 2; // clock or counterclock wise 
         }
 

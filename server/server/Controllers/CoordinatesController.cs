@@ -64,15 +64,15 @@ namespace server.Controllers
         [HttpPost]
         public string GetBoundingCircleSearchProcess([FromBody]CircleSearchDisplayRequestModelClass data)
         {
-            double selectLat = data.SelectLat;
-            double selectLon = data.SelectLon;
+            double selectLat = data.Select.Lat;
+            double selectLon = data.Select.Lon;
             double lat = data.SearchLat;
             double lon = data.SearchLon;
             double range = data.Range;
             int level = data.Level;
 
             var db = _dbInterface.GetDatabase();
-            return JsonConvert.SerializeObject(db.DisplayBoundingCircleSearchProcess(selectLat, selectLon, lat, lon, range, level));
+            return JsonConvert.SerializeObject(db.BoundingCircleSearchProcess(selectLat, selectLon, lat, lon, range, level));
         }
 
         // POST /BoxSearchCoordinates
@@ -109,12 +109,12 @@ namespace server.Controllers
         [HttpPost]
         public string GetBoundingBoxSearchProcess([FromBody]BoxSearchDisplayRequestModelClass data)
         {
-            Coordinates select = new Coordinates { Lat = data.SelectLat, Lon = data.SelectLon };
+            Coordinates select = data.Select;
             Coordinates max = new Coordinates { Lat = data.SearchMaxLat, Lon = data.SearchMaxLon };
             Coordinates min = new Coordinates { Lat = data.SearchMinLat, Lon = data.SearchMinLon };
 
             var db = _dbInterface.GetDatabase();
-            return JsonConvert.SerializeObject(db.DisplayBoundingBoxSearchProcess(select, max, min, data.Level));
+            return JsonConvert.SerializeObject(db.BoundingBoxSearchProcess(select, max, min, data.Level));
         }
 
         // POST /PolygonSearchCoordinates
@@ -132,6 +132,15 @@ namespace server.Controllers
         public IEnumerable<BoundingBox> GetPolygonSearchBoxes([FromBody]PolygonSearchRequestModelClass data)
         {
             return geohash.DataBase.BpolygonBoxes(data.Vertices, data.Level);
+        }
+
+        // POST /PolygonSearchProcess
+        [Route("PolygonSearchProcess")]
+        [HttpPost]
+        public string GetPolygonSearchProcess([FromBody]PolygonSearchProcessRequestModelClass data)
+        {
+            var db = _dbInterface.GetDatabase();
+            return JsonConvert.SerializeObject(db.BpolygonSearchProcess(data.Select, data.Vertices, data.Level));
         }
     }
 }

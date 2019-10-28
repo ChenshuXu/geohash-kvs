@@ -1,4 +1,5 @@
-﻿using System;
+﻿using NGeoHash;
+using System;
 namespace server.Models
 {
     public class BoxSearchRequestClass
@@ -13,8 +14,7 @@ namespace server.Models
 
     public class BoxSearchDisplayRequestModelClass
     {
-        public double SelectLat { set; get; }
-        public double SelectLon { set; get; }
+        public Coordinates Select { get; set; }
         public double SearchMaxLat { get; set; }
         public double SearchMaxLon { get; set; }
         public double SearchMinLat { get; set; }

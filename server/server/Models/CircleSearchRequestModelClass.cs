@@ -1,4 +1,5 @@
-﻿using System;
+﻿using NGeoHash;
+using System;
 namespace server.Models
 {
     public class CircleSearchRequestModelClass
@@ -12,8 +13,7 @@ namespace server.Models
 
     public class CircleSearchDisplayRequestModelClass
     {
-        public double SelectLat { get; set; }
-        public double SelectLon { get; set; }
+        public Coordinates Select { get; set; }
         public double SearchLat { get; set; }
         public double SearchLon { get; set; }
         public double Range { get; set; }
