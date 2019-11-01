@@ -7,7 +7,7 @@ from commonconf.backends import use_configparser_backend
 use_configparser_backend("./demo/server.cfg", "server")
 
 host = "localhost"
-port = int(sys.argv[1])
+port = 3306
 
 server = socketserver.TCPServer((host, port), FrameworkServer)
 server.serve_forever()

@@ -16,12 +16,13 @@ namespace MySqlTest
         {
             string connStr = "server=127.0.0.1;uid=root;" +
                 "pwd=" + root_password + ";database=world";
+            string connStr2 = "server=127.0.0.1;";
             MySqlConnection conn = new MySqlConnection(connStr);
             try
             {
                 Console.WriteLine("Connecting to MySQL...");
                 conn.Open();
-
+                Console.WriteLine("connected");
                 string sql = "SELECT Name, HeadOfState FROM Country WHERE Continent='Oceania'";
                 MySqlCommand cmd = new MySqlCommand(sql, conn);
                 MySqlDataReader rdr = cmd.ExecuteReader();
@@ -34,6 +35,7 @@ namespace MySqlTest
             }
             catch (Exception ex)
             {
+                Console.WriteLine("error");
                 Console.WriteLine(ex.ToString());
             }
 
