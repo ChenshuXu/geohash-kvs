@@ -3,7 +3,7 @@ from mysql_wire_framework.backend.base import ServerImplementation
 
 class DemoBackend(ServerImplementation):
     def get_display_version(self):
-        return "Demo Backend Implementation"
+        return "8.0.18"
 
     def structured_query_response(self, query):
         data = { "headers": [
