@@ -44,7 +44,7 @@ class FrameworkServer(socketserver.BaseRequestHandler):
                 self.get_sequence()
                 query = data[5:]
                 self.handle_query(query)
-
+            print(data)
             self.sequence = 0
             data = self.request.recv(1024)
 
@@ -181,6 +181,9 @@ class FrameworkServer(socketserver.BaseRequestHandler):
 
 
     def send_length_encoded_packet(self, value):
+        print("send_length_encoded_packet value:" + str(value));
+        print("send_length_encoded_packet lenenc value:" + str(self.lenenc(value)));
         packet = bytearray()
         packet.extend(self.lenenc(value))
+        print("send_length_encoded_packet:" + str(packet));
         self.send_packet(packet)
