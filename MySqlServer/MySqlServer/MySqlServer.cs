@@ -31,7 +31,6 @@ namespace MySqlServer
 
             try
             {
-
                 // Using Bind() method we associate a 
                 // network address to the Server Socket 
                 // All client that will connect to this  
@@ -44,41 +43,50 @@ namespace MySqlServer
                 // to connect to Server 
                 listener.Listen(10);
 
-                // Suspend while waiting for 
-                // incoming connection Using  
-                // Accept() method the server  
-                // will accept connection of client
-                Console.WriteLine("Waiting connection ... ");
-                Socket clientSocket = listener.Accept();
-
-                // Handshake
-                Console.WriteLine("start handshake");
-                HandleHandshake(clientSocket);
-
-                // Handshake response, handle login info
-                // Data buffer 
-                byte[] buffer = new Byte[200];
-                clientSocket.Receive(buffer);
-                HandleLogin(buffer);
-
-                // Send ok packet
-                Console.WriteLine("start ok");
-                SendOkPacket(clientSocket);
-
-                mSequence = 0;
-                // Command phase
-                // Handle query
-                Console.WriteLine("Command phase");
-                
-                while(true)
+                while (true)
                 {
-                    buffer = new Byte[200];
-                    int bytesLength = clientSocket.Receive(buffer);
-                    if (bytesLength != 0)
+                    // Suspend while waiting for 
+                    // incoming connection Using  
+                    // Accept() method the server  
+                    // will accept connection of client
+                    Console.WriteLine("Waiting connection ... ");
+                    Socket clientSocket = listener.Accept();
+
+                    // Handshake
+                    Console.WriteLine("start handshake");
+                    HandleHandshake(clientSocket);
+
+                    // Handshake response, handle login info
+                    // Data buffer 
+                    byte[] buffer = new Byte[200];
+                    clientSocket.Receive(buffer);
+                    HandleLogin(buffer);
+
+                    // Send ok packet
+                    Console.WriteLine("start ok");
+                    SendOkPacket(clientSocket);
+
+                    mSequence = 0;
+                    // Command phase
+                    // Handle query
+                    Console.WriteLine("Command phase");
+
+                    while (true)
                     {
-                        Console.WriteLine("get command, length: {0}", bytesLength);
-                        HandleCommand(buffer, clientSocket);
-                        mSequence = 0;
+                        buffer = new Byte[200];
+                        int bytesLength = clientSocket.Receive(buffer);
+                        if (bytesLength != 0)
+                        {
+                            Console.WriteLine("get command, length: {0}", bytesLength);
+                            bool quit = HandleCommand(buffer, clientSocket);
+                            mSequence = 0;
+                            if (quit)
+                            {
+                                clientSocket.Shutdown(SocketShutdown.Both);
+                                clientSocket.Close();
+                                break;
+                            }
+                        }
                     }
                 }
             }
@@ -89,7 +97,7 @@ namespace MySqlServer
             }
         }
 
-        private void HandleCommand(byte[] data, Socket clientSocket)
+        private bool HandleCommand(byte[] data, Socket clientSocket)
         {
             // print all bytes recieved
             //foreach (byte b in data)
@@ -105,18 +113,25 @@ namespace MySqlServer
             Console.WriteLine("sql packet length: {0}", packetLengthInt);
             Console.WriteLine("sequence: {0}", (int)sequence);
 
-            // Get request command query
+            // Get text protocol
             byte[] requestCommandQuery = new byte[packetLengthInt];
             Array.Copy(data, 4, requestCommandQuery, 0, packetLengthInt);
-            byte command = requestCommandQuery[0];
-            if(command == 0x03) //text protocol
+            byte textProtocol = requestCommandQuery[0];
+            if (textProtocol == 0x03) // COM_QUERY
             {
-                Console.WriteLine("get text protocol");
+                Console.WriteLine("get COM_QUERY");
                 GetSequence();
                 byte[] statement = new byte[packetLengthInt - 1];
                 Array.Copy(requestCommandQuery, 1, statement, 0, packetLengthInt - 1);
                 HandleQuery(statement, clientSocket);
+                return false;
             }
+            if (textProtocol == 0x01) // COM_QUIT
+            {
+                return true;
+            }
+
+            return false;
         }
 
         public class QueryData
@@ -143,19 +158,50 @@ namespace MySqlServer
             //{
             //    Console.WriteLine(Convert.ToString(b, 2).PadLeft(8, '0'));
             //}
-            string query = Encoding.UTF8.GetString(queryBytes, 0, queryBytes.Length);
+            string query = Encoding.UTF8.GetString(queryBytes, 0, queryBytes.Length).ToLower();
             Console.WriteLine("handle query: {0}", query);
+            
+            if (query.Substring(0, 6) == "select")
+            {
+                Console.WriteLine("handle select");
+                HandleSelect(query, clientSocket);
+            }
+            else
+            {
+                HandleSelect(query, clientSocket);
+            }
+        }
+
+        private void HandleSelect(string query, Socket clientSocket)
+        {
+            Console.WriteLine("handle {0}", query);
+            List<byte> sendPacket = new List<byte>();
+            string[] queryArray = query.Split(' ');
+            string columnName1 = queryArray[1]; // TODO can have multiple column names
+
+            if (columnName1 == "@@version_comment")
+            {
+                Console.WriteLine("at version_comment");
+                sendPacket.AddRange(GetSendPacket(GetLengthEncodedPacket(1)));
+                sendPacket.AddRange(GetSendPacket(GetVersionCommentHeaderPacket()));
+                sendPacket.AddRange(GetSendPacket(GetVersionCommentRowPacket()));
+                sendPacket.AddRange(GetSendPacket(GetEofPacket()));
+
+                clientSocket.Send(sendPacket.ToArray());
+                return;
+            }
+
             // get query data
             Header[] h =
             {
-                new Header { name = "Col1", type = "int" },
-                new Header { name = "Col2", type = "str" }
-            };
+                    new Header { name = "Col1", type = "int" },
+                    new Header { name = "Col2", type = "str" }
+                };
             Row[] r =
             {
-                new Row { Col1 = 1, Col2 = "ok" },
-                new Row { Col1 = 1, Col2 = "A" }
-            };
+                    new Row { Col1 = 1, Col2 = "ok" },
+                    new Row { Col1 = 1, Col2 = "A" }
+                };
             QueryData data = new QueryData
             {
                 headers = h,
@@ -163,36 +209,37 @@ namespace MySqlServer
             };
 
             // send length encoded packet
-            SendLengthEncodedPacket(data.headers.Length, clientSocket);
+            clientSocket.Send(GetSendPacket(GetLengthEncodedPacket(data.headers.Length)));
 
             // send data header packet
-            foreach(var header in data.headers)
+            foreach (var header in data.headers)
             {
-                SendHeaderPacket(header, clientSocket);
+                clientSocket.Send(GetSendPacket(GetHeaderPacket(header)));
             }
 
             // send eof packet
-            SendEofPacket(clientSocket);
+            //clientSocket.Send(GetSendPacket(GetEofPacket()));
 
             // send data row packet
-            foreach(var row in data.rows)
+            foreach (var row in data.rows)
             {
-                SendRowPacket(row, clientSocket);
+                clientSocket.Send(GetSendPacket(GetRowPacket(row)));
             }
 
             // send eof packet
-            SendEofPacket(clientSocket);
+            clientSocket.Send(GetSendPacket(GetEofPacket()));
         }
 
-        private void SendRowPacket(Row r, Socket clientSocket)
+        private byte[] GetRowPacket(Row r)
         {
+            Console.WriteLine("Send row {0}, {1}", r.Col1, r.Col2);
             List<byte> packet = new List<byte>();
             packet.AddRange(EncodeString(r.Col1.ToString()));
             packet.AddRange(EncodeString(r.Col2.ToString()));
-            clientSocket.Send(GetSendPacket(packet.ToArray()));
+            return packet.ToArray();
         }
 
-        private void SendEofPacket(Socket clientSocket)
+        private byte[] GetEofPacket2()
         {
             List<byte> packet = new List<byte>();
             packet.Add(0xfe); // EOF Header
@@ -200,20 +247,72 @@ namespace MySqlServer
             packet.Add(0x00);
             packet.Add(0x02); // status flags
             packet.Add(0x00);
-            clientSocket.Send(GetSendPacket(packet.ToArray()));
+            packet.Add(0x00); // payload
+            packet.Add(0x00);
+            return packet.ToArray();
         }
 
-        private void SendHeaderPacket(Header h, Socket clientSocket)
+        private byte[] GetEofPacket()
         {
             List<byte> packet = new List<byte>();
+            packet.Add(0xfe); // EOF Header
+            packet.Add(0x00); // warnings
+            packet.Add(0x00);
+            packet.Add(0x22); // status flags
+            packet.Add(0x00);
+            packet.Add(0x00); // payload
+            packet.Add(0x00);
+            return packet.ToArray();
+        }
+
+        private byte[] GetVersionCommentHeaderPacket()
+        {
+            List<byte> packet = new List<byte>();
+
+            int character_set = 33; //utf8_general_ci
+            int max_col_length = 84;
+            byte column_type = 0xfd; //var string
+
+            packet.AddRange(EncodeString("def"));
+            packet.AddRange(EncodeString(""));
+            packet.AddRange(EncodeString(""));
+            packet.AddRange(EncodeString(""));
+            packet.AddRange(EncodeString("@@version_comment"));
+            packet.Add(0x00);
+            packet.Add(0x0c);
+            packet.AddRange(ToByteArray(character_set, 2)); //utf8_general_ci
+            packet.AddRange(ToByteArray(max_col_length, 4));
+            packet.AddRange(ToByteArray(column_type, 1)); // var string
+
+
+            packet.Add(0x00); //Flags
+            packet.Add(0x00);
+
+            packet.Add(0x1f); //Decimals: 31
+
+            packet.Add(0x00); //Filler
+            packet.Add(0x00);
+
+            return packet.ToArray();
+        }
+
+        private byte[] GetVersionCommentRowPacket()
+        {
+            return EncodeString("MySQL Community Server (GPL)");
+        }
+
+        private byte[] GetHeaderPacket(Header h)
+        {
+            List<byte> packet = new List<byte>();
+
             int character_set = 33; //utf8_general_ci
             int max_col_length = 1024; //This is totally made up.  it shouldn't be
             byte column_type = 0xfd; //Fallback to varchar?
-            if(h.type == "int")
+            if (h.type == "int")
             {
                 column_type = 0x09;
             }
-            else if(h.type == "str")
+            else if (h.type == "str")
             {
                 column_type = 0xfd;
             }
@@ -237,12 +336,13 @@ namespace MySqlServer
 
             packet.Add(0x00); //Filler
             packet.Add(0x00);
-            clientSocket.Send(GetSendPacket(packet.ToArray()));
+
+            return packet.ToArray();
         }
 
-        private void SendLengthEncodedPacket(int lengh, Socket clientSocket)
+        private byte[] GetLengthEncodedPacket(int length)
         {
-            clientSocket.Send(GetSendPacket(new byte[] { EncodeLength(lengh) }));
+            return new byte[] { EncodeLength(length) };
         }
 
         private byte[] EncodeString(string str)
@@ -287,27 +387,60 @@ namespace MySqlServer
 
         private void HandleHandshake(Socket clientSocket)
         {
-            List<byte> handshake = new List<byte>();
-            byte[] server_version = Encoding.ASCII.GetBytes("8.0.18");
-            byte[] connection_id = BitConverter.GetBytes(993);
+            List<byte> packet = new List<byte>();
+            byte[] server_version = Encoding.ASCII.GetBytes("5.7.28");
+            byte[] connection_id = BitConverter.GetBytes(30);
 
-            handshake.Add(0x0a);
-            handshake.AddRange(server_version);
-            handshake.Add(0x00);
-            handshake.AddRange(connection_id);
-            handshake.Add(0x00);
+            packet.Add(0x0a); // protocol
+            packet.AddRange(server_version);
+            packet.Add(0x00);
+            packet.AddRange(connection_id); // thread id
 
-            for (var i = 0; i < 8; i++)
+            // salt
+            // first 8 bytes of the auth-plugin data
+            // last byte 0x00 as filler
+            byte[] salt = {
+                0x14, 0x34, 0x3d, 0x77, 0x52, 0x4b, 0x4d, 0x01,
+                0x00
+            };
+            packet.AddRange(salt);
+
+            //Server Capabilities: 0xffff
+            packet.Add(0xff);
+            packet.Add(0xff);
+
+            // Server Language: Unknown (255)
+            packet.Add(0xff);
+
+            // Server Status: 0x0200
+            packet.Add(0x02);
+            packet.Add(0x00);
+
+            // Extended Server Capabilities: 0xffx7
+            packet.Add(0xff);
+            packet.Add(0xc7);
+
+            // Authentication Plugin Length: 21
+            packet.Add(0x15);
+
+            // Unused: 00000000000000000000
+            for(var i = 0; i<10; i++)
             {
-                handshake.Add(0x00);
-            }
-            for (var i = 0; i < 2; i++)
-            {
-                handshake.Add(0x00);
+                packet.Add(0x00);
             }
 
-            byte[] packet = GetSendPacket(handshake.ToArray());
-            clientSocket.Send(packet);
+            // Salt: y5uww>'\027&r\004c
+            byte[] salt2 = {
+                0x79, 0x35, 0x75, 0x77, 0x77, 0x3e, 0x27, 0x17,
+                0x26, 0x72, 0x04, 0x63, 0x00
+            };
+            packet.AddRange(salt2);
+
+            // Authentication Plugin: mysql_native_password
+            packet.AddRange(Encoding.ASCII.GetBytes("mysql_native_password"));
+            packet.Add(0x00);
+
+            clientSocket.Send(GetSendPacket(packet.ToArray()));
             Console.WriteLine("send handshake");
         }
 
@@ -327,16 +460,15 @@ namespace MySqlServer
             Console.WriteLine("send ok packet");
         }
 
-        private byte[] GetSendPacket(byte[] byte_value)
+        private byte[] GetSendPacket(byte[] data)
         {
-            byte[] length = ToByteArray(byte_value.Length, 3);
+            List<byte> packet = new List<byte>();
+            byte[] length = ToByteArray(data.Length, 3);
             byte[] seq = ToByteArray(GetSequence(), 1);
-            byte[] value = new List<byte>()
-                .Concat(length)
-                .Concat(seq)
-                .Concat(byte_value)
-                .ToArray();
-            return value;
+            packet.AddRange(length);
+            packet.AddRange(seq);
+            packet.AddRange(data);
+            return packet.ToArray();
         }
 
         private byte[] ToByteArray(int theInt, int length)
