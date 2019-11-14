@@ -5,6 +5,10 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Security.Cryptography;
+using System.Net.Security;
+using System.Security.Cryptography.X509Certificates;
+using System.Security.Authentication;
+using OpenSSL.X509Certificate2Provider;
 
 namespace MySqlServer
 {
@@ -16,93 +20,133 @@ namespace MySqlServer
         static uint CLIENT_PLUGIN_AUTH = 0x00080000;
         static uint CLIENT_CONNECT_ATTRS = 0x00100000;
         static uint CLIENT_SSL = 0x00000800;
+        static uint CLIENT_PROTOCOL_41 = 0x00000200;
 
-        enum Phase { ConnectionPhase, CommandPhase };
-        private Phase mServerPhase = Phase.ConnectionPhase;
+        // Enable or disable acceptance of invalid SSL certificates.
+        public bool AcceptInvalidCertificates = true;
+        // Enable or disable mutual authentication of SSL client and server.
+        public bool MutuallyAuthenticate = false;
 
-        private int mSequence = 0;
-        private byte[] mSalt1; // 8 bytes
-        private byte[] mSalt2; // 12 bytes
-        private string mPassword = "bG43JPmBrY92";
+        enum Phase { Waiting, ConnectionPhase, CommandPhase };
+        private Phase _ServerPhase = Phase.Waiting;
+
+        private int _ReceiveBufferSize = 4096;
+        private string _ListenerIp = "127.0.0.1";
+        private IPAddress _IPAddress;
+        private int _Port = 3306; // default port
+        private bool _UseSsl = false;
+        private string _CertFilename;
+        private string _CertPassword;
+
+        private TcpListener _Listener = null;
+        private bool _Running;
+
+        private ClientMetadata _Client = null;
+
+        private MySqlDatabase _Database;
+
+        private X509Certificate2 _SslCertificate = null;
+        private X509Certificate2Collection _SslCertificateCollection = null;
+
+        private int _Sequence = 0;
+        private byte[] _Salt1; // 8 bytes
+        private byte[] _Salt2; // 12 bytes
+        private string _Password = "bG43JPmBrY92";
+
+        private bool Debug = true;
+
+        #region Constructors-and-Factories
+
+        public MySqlServer(string CertFilename, string CertPassword)
+        {
+            _CertFilename = CertFilename;
+            _CertPassword = CertPassword;
+
+            _Database = new MySqlDatabase();
+        }
+
+        #endregion
+
+        #region Public-Methods
 
         public void ExecuteServer()
         {
-            // Establish the local endpoint  
-            // for the socket. Dns.GetHostName 
-            // returns the name of the host  
-            // running the application.
-            IPAddress ipAddr = IPAddress.Parse("127.0.0.1");
-            IPEndPoint localEndPoint = new IPEndPoint(ipAddr, 3306);
-
             try
             {
-                // Creation TCP/IP Socket using  
-                // Socket Class Costructor 
-                Socket listener = new Socket(ipAddr.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
-                // Using Bind() method we associate a 
-                // network address to the Server Socket 
-                // All client that will connect to this  
-                // Server Socket must know this network 
-                // Address 
-                listener.Bind(localEndPoint);
-                // Using Listen() method we create  
-                // the Client list that will want 
-                // to connect to Server 
-                listener.Listen(10);
+                _IPAddress = IPAddress.Parse(_ListenerIp);
+                _Listener = new TcpListener(_IPAddress, _Port);
+                _Listener.Start();
 
                 while (true)
                 {
-                    // Suspend while waiting for
-                    // incoming connection Using
-                    // Accept() method the server
-                    // will accept connection of client
-                    Console.WriteLine("Waiting connection ... ");
-                    Socket clientSocket = listener.Accept();
+                    Log("Waiting connection ... ");
+                    _UseSsl = false;
 
-                    // Handshake
-                    Console.WriteLine("start handshake");
-                    HandleHandshake(clientSocket);
+                    // Setup client
+                    TcpClient tcpClient = _Listener.AcceptTcpClient();
+                    _Client = new ClientMetadata(tcpClient);
 
-                    // Handshake response, handle login info
-                    // Data buffer 
-                    byte[] buffer = new Byte[1024];
-                    clientSocket.Receive(buffer);
-                    if (HandleLogin(buffer))
+                    // Connection phase
+                    Log("start handshake");
+                    SetState(Phase.ConnectionPhase);
+                    HandleHandshake();
+
+                    byte[] buffer = new byte[_ReceiveBufferSize];
+                    _Client.NetworkStream.Read(buffer);
+                    HandleHandshakeResponse(buffer);
+
+                    if (_UseSsl)
                     {
-                        // Send ok packet
-                        SendOkPacket(clientSocket);
-                        mServerPhase = Phase.CommandPhase;
-                    }
-                    else
-                    {
-                        // fail login
-                        clientSocket.Shutdown(SocketShutdown.Both);
-                        clientSocket.Close();
-                        mServerPhase = Phase.ConnectionPhase;
-                    }
-                    
+                        _SslCertificate = new X509Certificate2(_CertFilename, _CertPassword);
 
-                    mSequence = 0;
-                    // Command phase
-                    // Handle query
-                    Console.WriteLine("Command phase");
-
-                    while (mServerPhase == Phase.CommandPhase)
-                    {
-                        buffer = new Byte[1024];
-                        int bytesLength = clientSocket.Receive(buffer);
-                        if (bytesLength != 0)
+                        _SslCertificateCollection = new X509Certificate2Collection
                         {
-                            //Console.WriteLine("get command, length: {0}", bytesLength);
-                            bool quit = HandleCommand(buffer, clientSocket);
-                            mSequence = 0;
-                            if (quit)
-                            {
-                                clientSocket.Shutdown(SocketShutdown.Both);
-                                clientSocket.Close();
-                                mServerPhase = Phase.ConnectionPhase;
-                            }
+                            _SslCertificate
+                        };
+                        
+                        if (AcceptInvalidCertificates)
+                        {
+                            _Client.SslStream = new SslStream(_Client.NetworkStream, false, new RemoteCertificateValidationCallback(AcceptCertificate));
                         }
+                        else
+                        {
+                            _Client.SslStream = new SslStream(_Client.NetworkStream, false);
+                        }
+
+                        bool success = StartTls(_Client);
+
+                        if (!success)
+                        {
+                            _Client.Dispose();
+                            continue;
+                        }
+                        else
+                        {
+                            buffer = new byte[_ReceiveBufferSize];
+                            _Client.SslStream.Read(buffer);
+                            HandleHandshakeResponse(buffer);
+                        }
+
+                    }
+
+
+                    // Command phase
+                    _Sequence = 0;
+                    while (_ServerPhase == Phase.CommandPhase)
+                    {
+                        buffer = new Byte[_ReceiveBufferSize];
+                        if (!_UseSsl)
+                        {
+                            _Client.NetworkStream.Read(buffer);
+                        }
+                        else
+                        {
+                            _Client.SslStream.Read(buffer);
+                        }
+
+                        HandleCommand(buffer);
+                        _Sequence = 0;
+                        
                     }
                 }
             }
@@ -113,13 +157,273 @@ namespace MySqlServer
             }
         }
 
-        private bool HandleCommand(byte[] data, Socket clientSocket)
+        #endregion
+
+        #region Private-Methods
+
+        private bool StartTls(ClientMetadata client)
         {
-            // print all bytes recieved
-            //foreach (byte b in data)
-            //{
-            //    Console.WriteLine(Convert.ToString(b, 2).PadLeft(8, '0'));
-            //}
+            try
+            {
+                client.SslStream.AuthenticateAsServer(
+                    _SslCertificate,
+                    MutuallyAuthenticate,
+                    SslProtocols.Tls12,
+                    !AcceptInvalidCertificates);
+
+                if (!client.SslStream.IsEncrypted)
+                {
+                    Log("[" + client.IpPort + "] not encrypted");
+                    client.Dispose();
+                    return false;
+                }
+
+                if (!client.SslStream.IsAuthenticated)
+                {
+                    Log("[" + client.IpPort + "] stream not authenticated");
+                    client.Dispose();
+                    return false;
+                }
+
+                if (MutuallyAuthenticate && !client.SslStream.IsMutuallyAuthenticated)
+                {
+                    Log("[" + client.IpPort + "] failed mutual authentication");
+                    client.Dispose();
+                    return false;
+                }
+            }
+            catch (Exception e)
+            {
+                Log("[" + client.IpPort + "] TLS exception" + Environment.NewLine + e.ToString());
+                client.Dispose();
+                return false;
+            }
+            Log("ssl stream ok");
+            return true;
+        }
+
+        private void DisconnectClient()
+        {
+            Log("disconnect");
+            _Client.Dispose();
+        }
+
+        // State machine
+        private void SetState(Phase phase)
+        {
+            // exit state
+            switch (_ServerPhase)
+            {
+                // exit command phase
+                case Phase.CommandPhase:
+                    break;
+            }
+
+            _ServerPhase = phase;
+
+            // enter state
+        }
+
+        /// <summary>
+        /// Send initial handshake packet
+        /// </summary>
+        private void HandleHandshake()
+        {
+            List<byte> packet = new List<byte>();
+
+            // 1 byte protocol version
+            packet.Add(0x0a);
+            // server version
+            byte[] server_version = NulTerminatedString("5.7.28");
+            packet.AddRange(server_version);
+            // 4 bytes connection id
+            byte[] connection_id = BitConverter.GetBytes(30);
+            packet.AddRange(connection_id); // thread id
+
+            // Salt1
+            // first 8 bytes of the auth-plugin data
+            // last byte 0x00 as filler
+            GenerateSalt1();
+            packet.AddRange(_Salt1);
+            packet.Add(0x00);
+
+            //Server Capabilities: 0xffff
+            packet.Add(0xff);
+            packet.Add(0xff);
+
+            // Server Language: Unknown (255)
+            packet.Add(0xff);
+
+            // Server Status: 0x0200
+            packet.Add(0x02);
+            packet.Add(0x00);
+
+            // Extended Server Capabilities: 0xffx7
+            packet.Add(0xff);
+            packet.Add(0xc7);
+
+            // Authentication Plugin Length: 21
+            packet.Add(0x15);
+
+            // Unused: 00000000000000000000
+            for (var i = 0; i < 10; i++)
+            {
+                packet.Add(0x00);
+            }
+
+            // Salt2
+            GenerateSalt2();
+            packet.AddRange(_Salt2);
+            packet.Add(0x00);
+
+            // Authentication Plugin: mysql_native_password
+            packet.AddRange(NulTerminatedString("mysql_native_password"));
+
+            SendPacket(packet.ToArray());
+            Console.WriteLine("send initial handshake");
+        }
+
+        /// <summary>
+        /// Handle handshake response packet
+        /// </summary>
+        /// <param name="data">response data</param>
+        private void HandleHandshakeResponse(byte[] data)
+        {
+            Log("handle handshake response");
+            GetSequence();
+
+            byte[] packetLength = new byte[3];
+            byte sequence = data[3];
+            Array.Copy(data, packetLength, 3);
+            int packetLengthInt = packetLength[0];
+            //Console.WriteLine("whole packetLength: {0}", data.Length);
+            //Console.WriteLine("packetLength: {0}", packetLengthInt);
+            //Console.WriteLine("sequence: {0}", (int)sequence);
+
+
+            // get login request package
+            byte[] loginRequestBytes = SubArray(data, 4, packetLengthInt);
+            long currentHead = 0;
+
+            // capability flags
+            byte[] clientCapabilitiesBytes = SubArray(loginRequestBytes, currentHead, 4); // client capabilities
+            currentHead += 4;
+            uint clientCapabilities = BitConverter.ToUInt32(clientCapabilitiesBytes, 0);
+            _Client.Capabilities = clientCapabilities;
+
+            // max-packet size
+            byte[] maxPacketSize = SubArray(loginRequestBytes, currentHead, 4);
+            currentHead += 4;
+
+            // character set
+            byte[] characterSet = SubArray(loginRequestBytes, currentHead, 1);
+            currentHead += 1;
+
+            // reserved unused
+            currentHead += 23;
+
+            // Switch to SSL exchange
+            if (Convert.ToBoolean(clientCapabilities & CLIENT_SSL) && !_UseSsl)
+            {
+                _UseSsl = true;
+                Console.WriteLine("switch to ssl");
+                return;
+            }
+
+
+            // username, string nul type
+            byte[] usernameBytes = SubArray(loginRequestBytes, currentHead, packetLengthInt - currentHead);
+            string usernameStr = NulTerminatedString_bytesToString(usernameBytes);
+            currentHead += NulTerminatedString_stringLength(usernameBytes);
+            Console.WriteLine("username: {0}", usernameStr);
+
+            // Get user password from database
+            byte[] passwordInput = Encoding.ASCII.GetBytes(_Password);
+            bool passedVerification = false;
+
+            // auth-response
+            // check capability flags
+            if (Convert.ToBoolean(clientCapabilities & CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA))
+            {
+                // lenenc-int password length
+                byte[] passwordLengthBytes = SubArray(loginRequestBytes, currentHead, 8);
+                long passwordLength = LengthEncodedInteger_bytesToInt(passwordLengthBytes);
+                currentHead += LengthEncodedInteger_intLength(passwordLengthBytes);
+
+                byte[] passwordBytes = SubArray(loginRequestBytes, currentHead, passwordLength);
+                currentHead += passwordLength;
+                Console.WriteLine("password length: {0}, {1}", passwordLength, ByteArrayToHexString(passwordBytes));
+
+                passedVerification = VerifyPassword(passwordBytes, passwordInput);
+            }
+            else if (Convert.ToBoolean(clientCapabilities & CLIENT_SECURE_CONNECTION))
+            {
+                // 1 byte password length
+                int passwordLength = Convert.ToInt32(loginRequestBytes[currentHead]);
+                currentHead += 1;
+
+                byte[] passwordBytes = SubArray(loginRequestBytes, currentHead, passwordLength);
+                currentHead += passwordLength;
+                Console.WriteLine("password length: {0}, {1}", passwordLength, ByteArrayToHexString(passwordBytes));
+
+                passedVerification = VerifyPassword(passwordBytes, passwordInput);
+            }
+            else
+            {
+                // string nul type password
+                byte[] passwordBytes = SubArray(loginRequestBytes, currentHead, packetLengthInt - currentHead);
+                int passwordLength = NulTerminatedString_stringLength(passwordBytes);
+                byte[] password = SubArray(loginRequestBytes, currentHead, passwordLength);
+                currentHead += passwordLength;
+                Console.WriteLine("password length: {0}, {1}", passwordLength, ByteArrayToHexString(password));
+
+                passedVerification = VerifyPassword(passwordBytes, passwordInput);
+            }
+
+            // If have database name input
+            if (Convert.ToBoolean(clientCapabilities & CLIENT_CONNECT_WITH_DB))
+            {
+                // string nul type
+                byte[] databaseNameBytes = SubArray(loginRequestBytes, currentHead, packetLengthInt - currentHead);
+                string databaseName = NulTerminatedString_bytesToString(databaseNameBytes);
+                currentHead += NulTerminatedString_stringLength(databaseNameBytes);
+                Console.WriteLine("database string bytes length {0} name: {1}", NulTerminatedString_stringLength(databaseNameBytes), databaseName);
+            }
+
+            // If has auth plugin name
+            if (Convert.ToBoolean(clientCapabilities & CLIENT_PLUGIN_AUTH))
+            {
+                // string nul type
+                byte[] authNameBytes = SubArray(loginRequestBytes, currentHead, packetLengthInt - currentHead);
+                string authPluginName = NulTerminatedString_bytesToString(authNameBytes);
+                currentHead += NulTerminatedString_stringLength(authNameBytes);
+                Console.WriteLine("auth plugin string bytes length {0} name: {1}", NulTerminatedString_stringLength(authNameBytes), authPluginName);
+            }
+
+            // If have client connect attributs
+            if (Convert.ToBoolean(clientCapabilities & CLIENT_CONNECT_ATTRS))
+            {
+                // TODO:lenenc int type, length of all key-values
+            }
+
+            if (passedVerification)
+            { 
+                SendOkPacket();
+                SetState(Phase.CommandPhase);
+            }
+            else
+            {
+                // fail login
+                SendErrPacket("wrong password");
+                // Disconnect
+                DisconnectClient();
+                SetState(Phase.Waiting);
+            }
+
+        }
+
+        private void HandleCommand(byte[] data)
+        {
 
             // Get packet length and sequence number
             byte[] packetLength = new byte[3];
@@ -139,71 +443,48 @@ namespace MySqlServer
                 GetSequence();
                 byte[] statement = new byte[packetLengthInt - 1];
                 Array.Copy(requestCommandQuery, 1, statement, 0, packetLengthInt - 1);
-                HandleQuery(statement, clientSocket);
-                return false;
+                HandleQuery(statement);
+                
             }
             if (textProtocol == 0x01) // COM_QUIT
             {
-                return true;
+                Log("disconnect");
+                _Client.Dispose();
+                SetState(Phase.Waiting);
             }
 
-            return false;
         }
 
-        public class QueryData
+        private void HandleQuery(byte[] queryBytes)
         {
-            public Header[] headers { set; get; }
-            public Row[] rows { set; get; }
-        }
-
-        public class Header
-        {
-            public string name { set; get; }
-            public string type { set; get; }
-        }
-
-        public class Row
-        {
-            public int Col1 { get; set; }
-            public string Col2 { get; set; }
-        }
-
-        private void HandleQuery(byte[] queryBytes, Socket clientSocket)
-        {
-            //foreach (byte b in queryBytes)
-            //{
-            //    Console.WriteLine(Convert.ToString(b, 2).PadLeft(8, '0'));
-            //}
             string query = Encoding.ASCII.GetString(queryBytes, 0, queryBytes.Length).ToLower();
             Console.WriteLine("handle query: {0}", query);
             
             if (query.Substring(0, 6) == "select")
             {
                 Console.WriteLine("handle select");
-                HandleSelect(query, clientSocket);
+                HandleSelect(query);
             }
             else
             {
-                HandleSelect(query, clientSocket);
+                HandleSelect(query);
             }
         }
 
-        private void HandleSelect(string query, Socket clientSocket)
+        private void HandleSelect(string query)
         {
             Console.WriteLine("handle {0}", query);
             List<byte> sendPacket = new List<byte>();
             string[] queryArray = query.Split(' ');
-            string columnName1 = queryArray[1]; // TODO can have multiple column names
+            string columnName1 = queryArray[1]; // TODO: can have multiple column names
 
             if (columnName1 == "@@version_comment")
             {
                 Console.WriteLine("at version_comment");
-                sendPacket.AddRange(GetSendPacket(LengthEncodedInteger(1)));
-                sendPacket.AddRange(GetSendPacket(GetVersionCommentHeaderPacket()));
-                sendPacket.AddRange(GetSendPacket(GetVersionCommentRowPacket()));
-                sendPacket.AddRange(GetSendPacket(GetEofPacket()));
-
-                clientSocket.Send(sendPacket.ToArray());
+                SendPacket(LengthEncodedInteger(1));
+                SendPacket(GetVersionCommentHeaderPacket());
+                SendPacket(GetVersionCommentRowPacket());
+                SendEofPacket();
                 return;
             }
 
@@ -225,97 +506,24 @@ namespace MySqlServer
             };
 
             // send length encoded packet
-            clientSocket.Send(GetSendPacket(LengthEncodedInteger(data.headers.Length)));
+            SendPacket(LengthEncodedInteger(data.headers.Length));
 
             // send data header packet
             foreach (var header in data.headers)
             {
-                clientSocket.Send(GetSendPacket(GetHeaderPacket(header)));
+                SendPacket(GetHeaderPacket(header));
             }
-
-            // send eof packet
-            //clientSocket.Send(GetSendPacket(GetEofPacket()));
 
             // send data row packet
             foreach (var row in data.rows)
             {
-                clientSocket.Send(GetSendPacket(GetRowPacket(row)));
+                SendPacket(GetRowPacket(row));
             }
 
             // send eof packet
-            clientSocket.Send(GetSendPacket(GetEofPacket()));
+            SendEofPacket();
         }
 
-        private byte[] GetRowPacket(Row r)
-        {
-            Console.WriteLine("Send row {0}, {1}", r.Col1, r.Col2);
-            List<byte> packet = new List<byte>();
-            packet.AddRange(LengthEncodedString(r.Col1.ToString()));
-            packet.AddRange(LengthEncodedString(r.Col2.ToString()));
-            return packet.ToArray();
-        }
-
-        private byte[] GetEofPacket2()
-        {
-            List<byte> packet = new List<byte>();
-            packet.Add(0xfe); // EOF Header
-            packet.Add(0x00); // warnings
-            packet.Add(0x00);
-            packet.Add(0x02); // status flags
-            packet.Add(0x00);
-            packet.Add(0x00); // payload
-            packet.Add(0x00);
-            return packet.ToArray();
-        }
-
-        private byte[] GetEofPacket()
-        {
-            List<byte> packet = new List<byte>();
-            packet.Add(0xfe); // EOF Header
-            packet.Add(0x00); // warnings
-            packet.Add(0x00);
-            packet.Add(0x22); // status flags
-            packet.Add(0x00);
-            packet.Add(0x00); // payload
-            packet.Add(0x00);
-            return packet.ToArray();
-        }
-
-        private byte[] GetVersionCommentHeaderPacket()
-        {
-            List<byte> packet = new List<byte>();
-
-            int character_set = 33; //utf8_general_ci
-            int max_col_length = 84;
-            byte column_type = 0xfd; //var string
-
-            packet.AddRange(LengthEncodedString("def"));
-            packet.AddRange(LengthEncodedString(""));
-            packet.AddRange(LengthEncodedString(""));
-            packet.AddRange(LengthEncodedString(""));
-            packet.AddRange(LengthEncodedString("@@version_comment"));
-            packet.Add(0x00);
-            packet.Add(0x0c);
-            packet.AddRange(FixedLengthInteger(character_set, 2)); //utf8_general_ci
-            packet.AddRange(FixedLengthInteger(max_col_length, 4));
-            packet.AddRange(FixedLengthInteger(column_type, 1)); // var string
-
-
-            packet.Add(0x00); //Flags
-            packet.Add(0x00);
-
-            packet.Add(0x1f); //Decimals: 31
-
-            packet.Add(0x00); //Filler
-            packet.Add(0x00);
-
-            return packet.ToArray();
-        }
-
-        private byte[] GetVersionCommentRowPacket()
-        {
-            return LengthEncodedString("MySQL Community Server (GPL)");
-        }
 
         private byte[] GetHeaderPacket(Header h)
         {
@@ -356,223 +564,54 @@ namespace MySqlServer
             return packet.ToArray();
         }
 
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="data"></param>
-        /// <returns>true if password is correct, false if password is wrong</returns>
-        private bool HandleLogin(byte[] data)
+        private byte[] GetRowPacket(Row r)
         {
-            Console.WriteLine("handle login");
-            GetSequence();
-
-            byte[] packetLength = new byte[3];
-            byte sequence = data[3];
-            Array.Copy(data, packetLength, 3);
-            int packetLengthInt = packetLength[0];
-            Console.WriteLine("whole packetLength: {0}", data.Length);
-            Console.WriteLine("packetLength: {0}", packetLengthInt);
-            Console.WriteLine("sequence: {0}", (int)sequence);
-
-
-            // get login request package
-            byte[] loginRequestBytes = SubArray(data, 4, packetLengthInt);
-            long currentHead = 0;
-            // print login request
-            //foreach (byte b in loginRequest)
-            //{
-            //    Console.WriteLine(Convert.ToString(b, 2).PadLeft(8, '0'));
-            //}
-
-            // capability flags
-            byte[] clientCapabilitiesBytes = SubArray(loginRequestBytes, currentHead, 4); // client capabilities
-            currentHead += 4;
-            uint clientCapabilities = BitConverter.ToUInt32(clientCapabilitiesBytes, 0);
-
-            // max-packet size
-            byte[] maxPacketSize = SubArray(loginRequestBytes, currentHead, 4);
-            currentHead += 4;
-
-            // character set
-            byte[] characterSet = SubArray(loginRequestBytes, currentHead, 1);
-            currentHead += 1;
-
-            // reserved unused
-            currentHead += 23;
-
-            // username, string nul type
-            byte[] usernameBytes = SubArray(loginRequestBytes, currentHead, packetLengthInt - currentHead);
-            string usernameStr = NulTerminatedString_bytesToString(usernameBytes);
-            currentHead += NulTerminatedString_stringLength(usernameBytes);
-            Console.WriteLine("username: {0}", usernameStr);
-
-            // Get user password from database
-            byte[] userPassword = Encoding.ASCII.GetBytes(mPassword);
-            bool passVerification = false;
-            // auth-response
-            if (Convert.ToBoolean(clientCapabilities & CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA))
-            {
-                // lenenc-int password length
-                byte[] passwordLengthBytes = SubArray(loginRequestBytes, currentHead, 8);
-                long passwordLength = LengthEncodedInteger_bytesToInt(passwordLengthBytes);
-                currentHead += LengthEncodedInteger_intLength(passwordLengthBytes);
-
-                byte[] passwordBytes = SubArray(loginRequestBytes, currentHead, passwordLength);
-                currentHead += passwordLength;
-                Console.WriteLine("password length: {0}, {1}", passwordLength, ByteArrayToHexString(passwordBytes));
-
-                passVerification = VerifyPassword(passwordBytes, userPassword);
-            }
-            else if(Convert.ToBoolean(clientCapabilities & CLIENT_SECURE_CONNECTION))
-            {
-                // 1 byte password length
-                int passwordLength = Convert.ToInt32(loginRequestBytes[currentHead]);
-                currentHead += 1;
-
-                byte[] passwordBytes = SubArray(loginRequestBytes, currentHead, passwordLength);
-                currentHead += passwordLength;
-                Console.WriteLine("password length: {0}, {1}", passwordLength, ByteArrayToHexString(passwordBytes));
-
-                passVerification = VerifyPassword(passwordBytes, userPassword);
-            }
-            else
-            {
-                // string nul type password
-                byte[] passwordBytes = SubArray(loginRequestBytes, currentHead, packetLengthInt - currentHead);
-                int passwordLength = NulTerminatedString_stringLength(passwordBytes);
-                byte[] password = SubArray(loginRequestBytes, currentHead, passwordLength);
-                currentHead += passwordLength;
-                Console.WriteLine("password length: {0}, {1}", passwordLength, ByteArrayToHexString(password));
-
-                passVerification = VerifyPassword(passwordBytes, userPassword);
-            }
-            
-            // if database
-            if (Convert.ToBoolean(clientCapabilities & CLIENT_CONNECT_WITH_DB))
-            {
-                // string nul type
-                byte[] databaseNameBytes = SubArray(loginRequestBytes, currentHead, packetLengthInt - currentHead);
-                string databaseName = NulTerminatedString_bytesToString(databaseNameBytes);
-                currentHead += NulTerminatedString_stringLength(databaseNameBytes);
-                Console.WriteLine("database string bytes length {0} name: {1}", NulTerminatedString_stringLength(databaseNameBytes), databaseName);
-            }
-
-            // if has auth plugin name
-            if (Convert.ToBoolean(clientCapabilities & CLIENT_PLUGIN_AUTH))
-            {
-                // string nul type
-                byte[] authNameBytes = SubArray(loginRequestBytes, currentHead, packetLengthInt - currentHead);
-                string authPluginName = NulTerminatedString_bytesToString(authNameBytes);
-                currentHead += NulTerminatedString_stringLength(authNameBytes);
-                Console.WriteLine("auth plugin string bytes length {0} name: {1}", NulTerminatedString_stringLength(authNameBytes), authPluginName);
-            }
-
-            // if have client connect attributs
-            if (Convert.ToBoolean(clientCapabilities & CLIENT_CONNECT_ATTRS))
-            {
-                // lenenc int type, length of all key-values
-            }
-
-            return passVerification;
-
+            Console.WriteLine("Send row {0}, {1}", r.Col1, r.Col2);
+            List<byte> packet = new List<byte>();
+            packet.AddRange(LengthEncodedString(r.Col1.ToString()));
+            packet.AddRange(LengthEncodedString(r.Col2.ToString()));
+            return packet.ToArray();
         }
 
-        /// <summary>
-        /// Verify 20-byte-password with real password
-        /// </summary>
-        /// <param name="inputPassword">20-byte-long input password</param>
-        /// <param name="userPassword">user password</param>
-        /// <returns></returns>
-        private bool VerifyPassword(byte[] inputPassword, byte[] userPassword)
-        {
-            // password is calculated by
-            // SHA1( password ) XOR SHA1( "20-bytes random data from server" <concat> SHA1( SHA1( password ) ) )
-            byte[] salt = ConcatArrays(mSalt1, mSalt2);
-            SHA1 sha1Hash = SHA1.Create();
-
-            // part 1
-            byte[] part1 = sha1Hash.ComputeHash(userPassword);
-
-            // part 2
-            byte[] partBytes = ConcatArrays(salt, sha1Hash.ComputeHash(part1));
-            byte[] part2 = sha1Hash.ComputeHash(partBytes);
-
-            // XOR
-            byte[] result = new byte[20];
-            for (var i = 0; i < 20; i++)
-            {
-                byte b = (byte)(part1[i] ^ part2[i]);
-                if (b != inputPassword[i])
-                {
-                    Console.WriteLine("wrong password");
-                    return false;
-                }
-                result[i] = b;
-            }
-
-            Console.WriteLine("correct password");
-            //Console.WriteLine("correct {0}, come in {1}", ByteArrayToHexString(result), ByteArrayToHexString(inputPassword));
-            
-            return true;
-        }
-
-        private void HandleHandshake(Socket clientSocket)
+        private byte[] GetVersionCommentHeaderPacket()
         {
             List<byte> packet = new List<byte>();
-            
-            // 1 byte protocol version
-            packet.Add(0x0a);
-            // server version
-            byte[] server_version = NulTerminatedString("5.7.28");
-            packet.AddRange(server_version);
-            // 4 bytes connection id
-            byte[] connection_id = BitConverter.GetBytes(30);
-            packet.AddRange(connection_id); // thread id
 
-            // salt
-            // first 8 bytes of the auth-plugin data
-            // last byte 0x00 as filler
-            GenerateSalt1();
-            packet.AddRange(mSalt1);
+            int character_set = 33; //utf8_general_ci
+            int max_col_length = 84;
+            byte column_type = 0xfd; //var string
+
+            packet.AddRange(LengthEncodedString("def"));
+            packet.AddRange(LengthEncodedString(""));
+            packet.AddRange(LengthEncodedString(""));
+            packet.AddRange(LengthEncodedString(""));
+            packet.AddRange(LengthEncodedString("@@version_comment"));
+            packet.Add(0x00);
+            packet.Add(0x0c);
+            packet.AddRange(FixedLengthInteger(character_set, 2)); //utf8_general_ci
+            packet.AddRange(FixedLengthInteger(max_col_length, 4));
+            packet.AddRange(FixedLengthInteger(column_type, 1)); // var string
+
+
+            packet.Add(0x00); //Flags
             packet.Add(0x00);
 
-            //Server Capabilities: 0xffff
-            packet.Add(0xff);
-            packet.Add(0xff);
+            packet.Add(0x1f); //Decimals: 31
 
-            // Server Language: Unknown (255)
-            packet.Add(0xff);
-
-            // Server Status: 0x0200
-            packet.Add(0x02);
+            packet.Add(0x00); //Filler
             packet.Add(0x00);
 
-            // Extended Server Capabilities: 0xffx7
-            packet.Add(0xff);
-            packet.Add(0xc7);
-
-            // Authentication Plugin Length: 21
-            packet.Add(0x15);
-
-            // Unused: 00000000000000000000
-            for(var i = 0; i<10; i++)
-            {
-                packet.Add(0x00);
-            }
-
-            // Salt: y5uww>'&rc
-            GenerateSalt2();
-            packet.AddRange(mSalt2);
-            packet.Add(0x00);
-
-            // Authentication Plugin: mysql_native_password
-            packet.AddRange(NulTerminatedString("mysql_native_password"));
-
-            clientSocket.Send(GetSendPacket(packet.ToArray()));
-            Console.WriteLine("send handshake");
+            return packet.ToArray();
         }
 
-        private void SendOkPacket(Socket clientSocket)
+        private byte[] GetVersionCommentRowPacket()
+        {
+            return LengthEncodedString("MySQL Community Server (GPL)"); // TODO: simplify
+        }
+
+        #region Generic Response Packets
+
+        private void SendOkPacket()
         {
             List<byte> ok = new List<byte>();
             ok.Add(0x00); // OK
@@ -583,12 +622,56 @@ namespace MySqlServer
             ok.Add(0x00); // No warnings
             ok.Add(0x00);
 
-            byte[] packet = GetSendPacket(ok.ToArray());
-            clientSocket.Send(packet);
+            SendPacket(ok.ToArray());
             Console.WriteLine("send ok packet");
         }
 
-        private byte[] GetSendPacket(byte[] data)
+        private void SendErrPacket(String message)
+        {
+            List<byte> bytes = new List<byte>();
+
+            bytes.Add(0xff); //[ff] header of the ERR packet
+
+            byte[] errorCode = { 0x15, 0x04 };
+            bytes.AddRange(errorCode);
+
+            if (Convert.ToBoolean(_Client.Capabilities & CLIENT_PROTOCOL_41))
+            {
+                // sql_state_marker, string[1]
+                bytes.Add(0x23);
+
+                // sql_state, string[5]
+                bytes.AddRange(FixedLengthString("28000", 5));
+            }
+
+            bytes.AddRange(RestOfPacketString(message));
+
+            SendPacket(bytes.ToArray());
+            Console.WriteLine("send err packet");
+        }
+
+        private void SendEofPacket()
+        {
+            List<byte> packet = new List<byte>();
+
+            // [fe] EOF header
+            packet.Add(0xfe);
+
+            if (Convert.ToBoolean(_Client.Capabilities & CLIENT_PROTOCOL_41))
+            {
+                // number of warnings
+                packet.Add(0x00); // warnings
+                packet.Add(0x00);
+
+                // Status Flags
+                packet.Add(0x02);
+                packet.Add(0x00);
+            }
+
+            SendPacket(packet.ToArray());
+        }
+
+        private void SendPacket(byte[] data)
         {
             List<byte> packet = new List<byte>();
             byte[] length = FixedLengthInteger(data.Length, 3);
@@ -596,24 +679,35 @@ namespace MySqlServer
             packet.AddRange(length);
             packet.AddRange(seq);
             packet.AddRange(data);
-            return packet.ToArray();
+
+            byte[] packetArray = packet.ToArray();
+
+            if (!_UseSsl)
+            {
+                _Client.NetworkStream.Write(packetArray, 0, packetArray.Length);
+                _Client.NetworkStream.Flush();
+            }
+            else
+            {
+                _Client.SslStream.Write(packetArray, 0, packetArray.Length);
+                _Client.SslStream.Flush();
+            }
         }
+
+        #endregion
 
         private int GetSequence()
         {
-            int val = mSequence;
-            mSequence += 1;
-            if (mSequence > 255)
+            int val = _Sequence;
+            _Sequence += 1;
+            if (_Sequence > 255)
             {
-                mSequence = 0;
+                _Sequence = 0;
             }
             return val;
         }
 
-        ///
-        /// Integer types
-        ///
-
+        #region Integer types
         // type int<>
         private byte[] FixedLengthInteger(int theInt, int length)
         {
@@ -708,11 +802,9 @@ namespace MySqlServer
             Console.WriteLine("1-byte int");
             return 1;
         }
+        #endregion
 
-        ///
-        /// String types
-        ///
-
+        #region string types
         // type string<lenenc>
         private byte[] LengthEncodedString(string str)
         {
@@ -727,7 +819,15 @@ namespace MySqlServer
         private byte[] FixedLengthString(string str, int length)
         {
             byte[] bytes = new byte[length];
-            Array.Copy(Encoding.ASCII.GetBytes(str), bytes, Math.Min(20, str.Length));
+
+            try
+            {
+                Array.Copy(Encoding.ASCII.GetBytes(str), bytes, str.Length);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("string length longer than fix length {0}", ex);
+            }
             return bytes;
         }
 
@@ -743,7 +843,7 @@ namespace MySqlServer
         // type string<EOF>
         private byte[] RestOfPacketString(string str)
         {
-            return new byte[] { };
+            return Encoding.ASCII.GetBytes(str);
         }
 
         // type string<NUL>, Strings that are terminated by a [00] byte.
@@ -756,6 +856,7 @@ namespace MySqlServer
 
             return bytes.ToArray();
         }
+        #endregion
 
         /// <summary>
         /// Convert string<NUL> bytes to sting
@@ -796,12 +897,12 @@ namespace MySqlServer
 
         private void GenerateSalt1()
         {
-            mSalt1 = GetSalt(8);
+            _Salt1 = GetSalt(8);
         }
 
         private void GenerateSalt2()
         {
-            mSalt2 = GetSalt(12);
+            _Salt2 = GetSalt(12);
         }
 
         private static byte[] GetSalt(int maximumSaltLength)
@@ -814,6 +915,61 @@ namespace MySqlServer
 
             return salt;
         }
+
+
+        /// <summary>
+        /// Verify 20-byte-password with real password
+        /// </summary>
+        /// <param name="inputPassword">20-byte-long input password</param>
+        /// <param name="userPassword">user password</param>
+        /// <returns></returns>
+        private bool VerifyPassword(byte[] inputPassword, byte[] userPassword)
+        {
+            // password is calculated by
+            // SHA1( password ) XOR SHA1( "20-bytes random data from server" <concat> SHA1( SHA1( password ) ) )
+            byte[] salt = ConcatArrays(_Salt1, _Salt2);
+            SHA1 sha1Hash = SHA1.Create();
+
+            // part 1
+            byte[] part1 = sha1Hash.ComputeHash(userPassword);
+
+            // part 2
+            byte[] partBytes = ConcatArrays(salt, sha1Hash.ComputeHash(part1));
+            byte[] part2 = sha1Hash.ComputeHash(partBytes);
+
+            // XOR
+            byte[] result = new byte[20];
+            for (var i = 0; i < 20; i++)
+            {
+                byte b = (byte)(part1[i] ^ part2[i]);
+                if (b != inputPassword[i])
+                {
+                    Console.WriteLine("wrong password");
+                    return false;
+                }
+                result[i] = b;
+            }
+
+            Console.WriteLine("correct password");
+            //Console.WriteLine("correct {0}, come in {1}", ByteArrayToHexString(result), ByteArrayToHexString(inputPassword));
+
+            return true;
+        }
+
+        private bool AcceptCertificate(object sender, X509Certificate certificate, X509Chain chain, SslPolicyErrors sslPolicyErrors)
+        {
+            // return true; // Allow untrusted certificates.
+            return AcceptInvalidCertificates;
+        }
+
+        private void Log(string msg)
+        {
+            if (Debug) Console.WriteLine(msg);
+        }
+
+        #endregion
+
+        #region Helper-Methods
 
         /// <summary>
         /// Sub array
@@ -858,6 +1014,70 @@ namespace MySqlServer
             foreach (byte b in ba)
                 hex.AppendFormat("{0:x2}", b);
             return hex.ToString();
+        }
+
+        public byte[] GetBytesFromPEM(string pemString, string section)
+        {
+            var header = String.Format("-----BEGIN {0}-----", section);
+            var footer = String.Format("-----END {0}-----", section);
+
+            var start = pemString.IndexOf(header, StringComparison.Ordinal);
+            if (start < 0)
+                return null;
+
+            start += header.Length;
+            var end = pemString.IndexOf(footer, start, StringComparison.Ordinal) - start;
+
+            if (end < 0)
+                return null;
+
+            return Convert.FromBase64String(pemString.Substring(start, end));
+        }
+
+        public string GetStringFromPEM(string pemString, string section)
+        {
+            var header = String.Format("-----BEGIN {0}-----", section);
+            var footer = String.Format("-----END {0}-----", section);
+
+            var start = pemString.IndexOf(header, StringComparison.Ordinal);
+            if (start < 0)
+                return null;
+
+            start += header.Length;
+            var end = pemString.IndexOf(footer, start, StringComparison.Ordinal) - start;
+
+            if (end < 0)
+                return null;
+
+            return pemString.Substring(start, end);
+        }
+
+        public void PrintAllBytes(byte[] data)
+        {
+            foreach (byte b in data)
+            {
+                Console.WriteLine(Convert.ToString(b, 2).PadLeft(8, '0'));
+            }
+        }
+
+        #endregion
+
+        public class QueryData
+        {
+            public Header[] headers { set; get; }
+            public Row[] rows { set; get; }
+        }
+
+        public class Header
+        {
+            public string name { set; get; }
+            public string type { set; get; }
+        }
+
+        public class Row
+        {
+            public int Col1 { get; set; }
+            public string Col2 { get; set; }
         }
     }
 }

@@ -12,7 +12,7 @@ namespace MySqlServer
     {
         static void Main(string[] args)
         {
-            MySqlServer server = new MySqlServer();
+            MySqlServer server = new MySqlServer("../../../certs/server-cert.p12", "pswd");
             server.ExecuteServer();
         }
     }

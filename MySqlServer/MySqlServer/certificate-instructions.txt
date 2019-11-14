@@ -1,0 +1,6 @@
+SimpleTcp Certificate Details
+Created using OpenSSL.  This is a self-signed certificate and should NOT be used in production.
+
+openssl pkcs12 -export -out server-cert.p12 -in server-cert.pem -inkey server-key.pem
+
+Export password is pswd
