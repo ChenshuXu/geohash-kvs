@@ -12,11 +12,11 @@ namespace geohash
     {
         // Key is encoded code
         // Value is an array of coordinates
-        private IDictionary<string, List<Coordinates>> Dict = new Dictionary<string, List<Coordinates>>();
-        private List<string> FullList = new List<string>();
-        private int numberOfCharsStart = 1;
-        private int maxCoordinatesInValue = 500;
-        private int maxNumberOfChar = 9;
+        private IDictionary<string, List<Coordinates>> _Dict = new Dictionary<string, List<Coordinates>>();
+        private List<string> _FullList = new List<string>();
+        private int _NumberOfCharsStart = 1;
+        private int _MaxCoordinatesInValue = 500;
+        private int _MaxNumberOfChar = 9;
 
         public void Add2( double latitude, double longitude, int numberOfChars = 1 )
         {
@@ -25,24 +25,24 @@ namespace geohash
             // Get the value
             Coordinates coordinate = new Coordinates { Lat = latitude, Lon = longitude };
 
-            if (!Dict.ContainsKey(key))
+            if (!_Dict.ContainsKey(key))
             {
                 List<Coordinates> value = new List<Coordinates> { coordinate };
-                Dict.Add(key, value);
+                _Dict.Add(key, value);
                 //Console.WriteLine("Add new key " + key);
                 return;
             }
 
-            if (Dict.ContainsKey(key) && Dict[key].Count < maxCoordinatesInValue)
+            if (_Dict.ContainsKey(key) && _Dict[key].Count < _MaxCoordinatesInValue)
             {
-                Dict[key].Add(coordinate);
+                _Dict[key].Add(coordinate);
                 //Console.WriteLine("Add existent key " + key + ", " + Dict[key].Count);
                 return;
             }
 
-            if (numberOfChars >= maxNumberOfChar)
+            if (numberOfChars >= _MaxNumberOfChar)
             {
-                Dict[key].Add(coordinate);
+                _Dict[key].Add(coordinate);
                 //Console.WriteLine("Add existent key " + key + ", " + Dict[key].Count);
                 return;
             }
@@ -50,16 +50,16 @@ namespace geohash
             // Check how many coordinates under this key
             // If more than maxCoordinatesInValue, encode one more level
             // Also calculate all upper level again, move to a deeper level
-            if (Dict.ContainsKey(key) && Dict[key].Count >= maxCoordinatesInValue)
+            if (_Dict.ContainsKey(key) && _Dict[key].Count >= _MaxCoordinatesInValue)
             {
-                if (!FullList.Contains(key))
+                if (!_FullList.Contains(key))
                 {
                     // Mark current level as full
-                    FullList.Add(key);
+                    _FullList.Add(key);
                     //Console.WriteLine("Add " + key + " to full list");
 
                     // Move current level to the deeper level
-                    foreach (var coor in Dict[key])
+                    foreach (var coor in _Dict[key])
                     {
                         Add2(coor.Lat, coor.Lon, numberOfChars + 1);
                     }
@@ -74,27 +74,27 @@ namespace geohash
         {
             double latitude = coordinate.Lat;
             double longitude = coordinate.Lon;
-            for (int numberOfChars = 1; numberOfChars <= maxNumberOfChar; numberOfChars++)
+            for (int numberOfChars = 1; numberOfChars <= _MaxNumberOfChar; numberOfChars++)
             {
                 // Get the key
                 string key = GeoHash.Encode(latitude, longitude, numberOfChars);
                 // The value is coordinate
 
                 // First entry
-                if (!Dict.ContainsKey(key))
+                if (!_Dict.ContainsKey(key))
                 {
                     List<Coordinates> value = new List<Coordinates> { coordinate };
-                    Dict.Add(key, value);
+                    _Dict.Add(key, value);
                     //Console.WriteLine("Add new key " + key);
                 }
-                else if (Dict.ContainsKey(key) && Dict[key].Count < maxCoordinatesInValue)
+                else if (_Dict.ContainsKey(key) && _Dict[key].Count < _MaxCoordinatesInValue)
                 {
-                    Dict[key].Add(coordinate);
+                    _Dict[key].Add(coordinate);
                     //Console.WriteLine("Add existent key " + key + ", " + Dict[key].Count);
                 }
-                else if (numberOfChars == maxCoordinatesInValue)
+                else if (numberOfChars == _MaxCoordinatesInValue)
                 {
-                    Dict[key].Add(coordinate);
+                    _Dict[key].Add(coordinate);
                     //Console.WriteLine("Add existent key " + key + ", " + Dict[key].Count);
                 }
             }
@@ -108,7 +108,7 @@ namespace geohash
         {
             using (StreamWriter sw = new StreamWriter("dict.csv"))
             {
-                foreach (var item in Dict)
+                foreach (var item in _Dict)
                 {
                     //sw.WriteLine(item.Key + "," + item.Value.Count);
 
@@ -428,20 +428,20 @@ namespace geohash
         private Coordinates[] GetCoordinatesAll(string hash)
         {
             var coorList = new List<Coordinates>();
-            if (Dict.ContainsKey(hash))
+            if (_Dict.ContainsKey(hash))
             {
-                coorList.AddRange(Dict[hash]);
+                coorList.AddRange(_Dict[hash]);
                 // if has deeper level
-                if (FullList.Contains(hash))
+                if (_FullList.Contains(hash))
                 {
                     // find all hash start with hash
 
                     int level = hash.Length;
-                    foreach(string key in Dict.Keys)
+                    foreach(string key in _Dict.Keys)
                     {
                         if(key.Length>=level && key.Substring(0,level) == hash)
                         {
-                            coorList.AddRange(Dict[key]);
+                            coorList.AddRange(_Dict[key]);
                         }
                     }
                 }
@@ -459,9 +459,9 @@ namespace geohash
          */
         private Coordinates[] GetCoordinates(string hash)
         {
-            if (Dict.ContainsKey(hash))
+            if (_Dict.ContainsKey(hash))
             {
-                return Dict[hash].ToArray();
+                return _Dict[hash].ToArray();
             }
             return new Coordinates[] { };
         }

@@ -1,9 +1,9 @@
 ﻿using System;
 namespace MySqlServer
 {
-    public class MySqlDatabase
+    public class Table
     {
-        public MySqlDatabase()
+        public Table()
         {
         }
     }

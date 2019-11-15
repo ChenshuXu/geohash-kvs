@@ -20,7 +20,7 @@ namespace MySqlTest
 
         static void ReadDataset()
         {
-            string connStr = "server=127.0.0.1;uid=root;" +
+            string connStr = "server=127.0.0.1;port=3307;uid=root;" +
                 "pwd=" + root_password + ";SslMode=None";
             string connStr2 = "server=127.0.0.1;uid=xcs;" +
                 "pwd=" + user1_password + ";database=world";

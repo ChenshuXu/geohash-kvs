@@ -33,7 +33,7 @@ namespace MySqlServer
         private int _ReceiveBufferSize = 4096;
         private string _ListenerIp = "127.0.0.1";
         private IPAddress _IPAddress;
-        private int _Port = 3306; // default port
+        private int _Port = 3307; // default port
         private bool _UseSsl = false;
         private string _CertFilename;
         private string _CertPassword;
@@ -43,7 +43,7 @@ namespace MySqlServer
 
         private ClientMetadata _Client = null;
 
-        private MySqlDatabase _Database;
+        private Database _Database;
 
         private X509Certificate2 _SslCertificate = null;
         private X509Certificate2Collection _SslCertificateCollection = null;
@@ -62,7 +62,7 @@ namespace MySqlServer
             _CertFilename = CertFilename;
             _CertPassword = CertPassword;
 
-            _Database = new MySqlDatabase();
+            _Database = new Database();
         }
 
         #endregion
@@ -292,14 +292,15 @@ namespace MySqlServer
             Log("handle handshake response");
             GetSequence();
 
-            byte[] packetLength = new byte[3];
-            byte sequence = data[3];
-            Array.Copy(data, packetLength, 3);
-            int packetLengthInt = packetLength[0];
-            //Console.WriteLine("whole packetLength: {0}", data.Length);
-            //Console.WriteLine("packetLength: {0}", packetLengthInt);
-            //Console.WriteLine("sequence: {0}", (int)sequence);
+            // get mysql packet length
+            // first 3 bytes is packet length, fixed length integer
+            byte[] packetLengthBytes = new byte[3];
+            Array.Copy(data, packetLengthBytes, 3);
+            int packetLengthInt = FixedLengthInteger_toInt(packetLengthBytes);
+            Console.WriteLine("packetLength: {0}", packetLengthInt);
 
+            byte sequence = data[3];
+            //Console.WriteLine("sequence: {0}", (int)sequence);
 
             // get login request package
             byte[] loginRequestBytes = SubArray(data, 4, packetLengthInt);
@@ -337,7 +338,7 @@ namespace MySqlServer
             currentHead += NulTerminatedString_stringLength(usernameBytes);
             Console.WriteLine("username: {0}", usernameStr);
 
-            // Get user password from database
+            // TODO: Get user password from database
             byte[] passwordInput = Encoding.ASCII.GetBytes(_Password);
             bool passedVerification = false;
 
@@ -347,7 +348,7 @@ namespace MySqlServer
             {
                 // lenenc-int password length
                 byte[] passwordLengthBytes = SubArray(loginRequestBytes, currentHead, 8);
-                long passwordLength = LengthEncodedInteger_bytesToInt(passwordLengthBytes);
+                long passwordLength = LengthEncodedInteger_toInt(passwordLengthBytes);
                 currentHead += LengthEncodedInteger_intLength(passwordLengthBytes);
 
                 byte[] passwordBytes = SubArray(loginRequestBytes, currentHead, passwordLength);
@@ -388,6 +389,7 @@ namespace MySqlServer
                 string databaseName = NulTerminatedString_bytesToString(databaseNameBytes);
                 currentHead += NulTerminatedString_stringLength(databaseNameBytes);
                 Console.WriteLine("database string bytes length {0} name: {1}", NulTerminatedString_stringLength(databaseNameBytes), databaseName);
+                // TODO: set connected database name
             }
 
             // If has auth plugin name
@@ -459,15 +461,22 @@ namespace MySqlServer
         {
             string query = Encoding.ASCII.GetString(queryBytes, 0, queryBytes.Length).ToLower();
             Console.WriteLine("handle query: {0}", query);
+            string[] queryArray = query.Split(' ');
             
-            if (query.Substring(0, 6) == "select")
+            if (queryArray[0] == "select")
             {
-                Console.WriteLine("handle select");
                 HandleSelect(query);
+                return;
             }
-            else
+            if (queryArray[0] == "show")
             {
-                HandleSelect(query);
+                Console.WriteLine("handle show");
+                return;
+            }
+            if (queryArray[0] == "set")
+            {
+                Console.WriteLine("handle set");
+                return;
             }
         }
 
@@ -714,19 +723,24 @@ namespace MySqlServer
             byte[] resultArray = new byte[length];
             for (int i = length - 1; i >= 0; i--)
             {
-                resultArray[i] = (byte)((theInt >> (i * 8)) & 0xff);
+                resultArray[i] = (byte)(theInt >> (i * 8));
             }
             return resultArray;
+        }
+
+        private int FixedLengthInteger_toInt(byte[] bytes)
+        {
+            int sum = 0;
+            for (var i=bytes.Length-1; i>=0; i--)
+            {
+                sum += (int)(bytes[i] << (8 * i));
+            }
+            return sum;
         }
 
         // type int<lenenc>
         private byte[] LengthEncodedInteger(long value)
         {
-            if (value < 251)
-            {
-                // stored as a 1-byte integer
-                return new byte[] { (byte)value };
-            }
             if (value >= 251 && value < Math.Pow(2, 16))
             {
                 // 0xfc + 2-byte integer
@@ -752,28 +766,33 @@ namespace MySqlServer
                 }; // 0xfe + 8-byte integer
             }
 
+            // stored as a 1-byte integer
             return new byte[] { (byte)value };
         }
 
-        private long LengthEncodedInteger_bytesToInt(byte[] bytes)
+        private long LengthEncodedInteger_toInt(byte[] bytes)
         {
             // 8-byte integer
             if (bytes[0] == 0xfe)
             {
                 Console.WriteLine("8-byte int");
+                return FixedLengthInteger_toInt(SubArray(bytes, 1, 8));
             }
             // 3-byte integer
             if (bytes[0] == 0xfd)
             {
                 Console.WriteLine("3-byte int");
+                return FixedLengthInteger_toInt(SubArray(bytes, 1, 3));
             }
             // 2-byte integer
             if (bytes[0] == 0xfc)
             {
                 Console.WriteLine("2-byte int");
+                return FixedLengthInteger_toInt(SubArray(bytes, 1, 2));
             }
 
             // 1-byte integer
+            Console.WriteLine("1-byte int");
             return bytes[0];
         }
 
@@ -925,6 +944,10 @@ namespace MySqlServer
         /// <returns></returns>
         private bool VerifyPassword(byte[] inputPassword, byte[] userPassword)
         {
+            if (inputPassword.Length != 20)
+            {
+                return false;
+            }
             // password is calculated by
             // SHA1( password ) XOR SHA1( "20-bytes random data from server" <concat> SHA1( SHA1( password ) ) )
             byte[] salt = ConcatArrays(_Salt1, _Salt2);
@@ -981,7 +1004,15 @@ namespace MySqlServer
         public static T[] SubArray<T>(T[] bytes, long index, long length)
         {
             T[] result = new T[length];
-            Array.Copy(bytes, index, result, 0, length);
+            try
+            {
+                Array.Copy(bytes, index, result, 0, length);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("error in subarray");
+                throw new Exception("error in subarray");
+            }
             return result;
         }
 
