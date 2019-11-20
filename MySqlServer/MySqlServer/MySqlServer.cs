@@ -9,11 +9,17 @@ using System.Net.Security;
 using System.Security.Cryptography.X509Certificates;
 using System.Security.Authentication;
 using OpenSSL.X509Certificate2Provider;
+using TSQL;
+using TSQL.Statements;
+using TSQL.Tokens;
 
 namespace MySqlServer
 {
     public class MySqlServer
     {
+        #region Client Capability Flags
+        // More capability flages in https://dev.mysql.com/doc/internals/en/capability-flags.html
+        static uint CLIENT_FOUND_ROWS = 0x00000002;
         static uint CLIENT_CONNECT_WITH_DB = 0x00000008;
         static uint CLIENT_SECURE_CONNECTION = 0x00008000;
         static uint CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA = 0x00200000;
@@ -21,6 +27,35 @@ namespace MySqlServer
         static uint CLIENT_CONNECT_ATTRS = 0x00100000;
         static uint CLIENT_SSL = 0x00000800;
         static uint CLIENT_PROTOCOL_41 = 0x00000200;
+        static uint CLIENT_SESSION_TRACK = 0x00800000;
+        static uint CLIENT_DEPRECATE_EOF = 0x01000000;
+        #endregion
+
+        #region Server Status Flags
+        // More server flags in https://dev.mysql.com/doc/internals/en/status-flags.html
+        static uint SERVER_MORE_RESULTS_EXISTS = 0x0008;
+        #endregion
+
+        #region Column type
+        // More types in https://dev.mysql.com/doc/internals/en/com-query-response.html#column-type
+        public enum ColumnType
+        {
+            MYSQL_TYPE_LONG = 0x03,
+            MYSQL_TYPE_FLOAT = 0x04,
+            MYSQL_TYPE_DOUBLE = 0x05,
+            MYSQL_TYPE_NULL = 0x06,
+            MYSQL_TYPE_TIMESTAMP = 0x07,
+            MYSQL_TYPE_LONGLONG = 0x08,
+            MYSQL_TYPE_INT24 = 0x09,
+
+            MYSQL_TYPE_TIME = 0x0b,
+
+            MYSQL_TYPE_VARCHAR = 0x0f,
+            MYSQL_TYPE_VAR_STRING = 0xfd,
+            MYSQL_TYPE_STRING = 0xfe
+        }
+        #endregion
+
 
         // Enable or disable acceptance of invalid SSL certificates.
         public bool AcceptInvalidCertificates = true;
@@ -33,7 +68,7 @@ namespace MySqlServer
         private int _ReceiveBufferSize = 4096;
         private string _ListenerIp = "127.0.0.1";
         private IPAddress _IPAddress;
-        private int _Port = 3307; // default port
+        private int _Port = 3306; // default port
         private bool _UseSsl = false;
         private string _CertFilename;
         private string _CertPassword;
@@ -55,6 +90,8 @@ namespace MySqlServer
 
         private bool Debug = true;
 
+        
+
         #region Constructors-and-Factories
 
         public MySqlServer(string CertFilename, string CertPassword)
@@ -71,13 +108,13 @@ namespace MySqlServer
 
         public void ExecuteServer()
         {
-            try
-            {
-                _IPAddress = IPAddress.Parse(_ListenerIp);
-                _Listener = new TcpListener(_IPAddress, _Port);
-                _Listener.Start();
+            _IPAddress = IPAddress.Parse(_ListenerIp);
+            _Listener = new TcpListener(_IPAddress, _Port);
+            _Listener.Start();
 
-                while (true)
+            while (true)
+            {
+                try
                 {
                     Log("Waiting connection ... ");
                     _UseSsl = false;
@@ -100,10 +137,10 @@ namespace MySqlServer
                         _SslCertificate = new X509Certificate2(_CertFilename, _CertPassword);
 
                         _SslCertificateCollection = new X509Certificate2Collection
-                        {
-                            _SslCertificate
-                        };
-                        
+                            {
+                                _SslCertificate
+                            };
+
                         if (AcceptInvalidCertificates)
                         {
                             _Client.SslStream = new SslStream(_Client.NetworkStream, false, new RemoteCertificateValidationCallback(AcceptCertificate));
@@ -146,16 +183,21 @@ namespace MySqlServer
 
                         HandleCommand(buffer);
                         _Sequence = 0;
-                        
+
                     }
                 }
-            }
+                catch (Exception e)
+                {
+                    Log("disconnect");
+                    _Client.Dispose();
+                    SetState(Phase.Waiting);
+                    Console.WriteLine(e.ToString());
+                }
 
-            catch (Exception e)
-            {
-                Console.WriteLine(e.ToString());
             }
-        }
+            
+        
+    }
 
         #endregion
 
@@ -409,7 +451,7 @@ namespace MySqlServer
             }
 
             if (passedVerification)
-            { 
+            {
                 SendOkPacket();
                 SetState(Phase.CommandPhase);
             }
@@ -436,186 +478,150 @@ namespace MySqlServer
             Console.WriteLine("sequence: {0}", (int)sequence);
 
             // Get text protocol
-            byte[] requestCommandQuery = new byte[packetLengthInt];
-            Array.Copy(data, 4, requestCommandQuery, 0, packetLengthInt);
-            byte textProtocol = requestCommandQuery[0];
+            byte[] queryPacket = SubArray(data, 4, packetLengthInt);
+            byte textProtocol = queryPacket[0];
+
             if (textProtocol == 0x03) // COM_QUERY
             {
-                Console.WriteLine("get COM_QUERY");
+                Log("get COM_QUERY");
                 GetSequence();
-                byte[] statement = new byte[packetLengthInt - 1];
-                Array.Copy(requestCommandQuery, 1, statement, 0, packetLengthInt - 1);
-                HandleQuery(statement);
-                
+                byte[] queryBytes = SubArray(queryPacket, 1, packetLengthInt - 1);
+                string queryString = Encoding.ASCII.GetString(queryBytes, 0, queryBytes.Length);
+                HandleQuery(queryString);
+                return;
             }
+
             if (textProtocol == 0x01) // COM_QUIT
             {
                 Log("disconnect");
                 _Client.Dispose();
                 SetState(Phase.Waiting);
+                return;
             }
 
+            Log("other command");
         }
 
-        private void HandleQuery(byte[] queryBytes)
+        private void HandleQuery(string query)
         {
-            string query = Encoding.ASCII.GetString(queryBytes, 0, queryBytes.Length).ToLower();
             Console.WriteLine("handle query: {0}", query);
-            string[] queryArray = query.Split(' ');
-            
-            if (queryArray[0] == "select")
+            List<TSQLToken> tokens = TSQLTokenizer.ParseTokens(query);
+            foreach (var token in tokens)
             {
-                HandleSelect(query);
-                return;
+                Console.WriteLine("type: " + token.Type.ToString() + ", value: " + token.Text);
             }
-            if (queryArray[0] == "show")
-            {
-                Console.WriteLine("handle show");
-                return;
-            }
-            if (queryArray[0] == "set")
-            {
-                Console.WriteLine("handle set");
-                return;
-            }
-        }
 
-        private void HandleSelect(string query)
-        {
-            Console.WriteLine("handle {0}", query);
-            List<byte> sendPacket = new List<byte>();
-            string[] queryArray = query.Split(' ');
-            string columnName1 = queryArray[1]; // TODO: can have multiple column names
+            Table returnTable = _Database.GetTable("dummy");
 
-            if (columnName1 == "@@version_comment")
+            if (tokens[0].Text.ToLower() == "select")
             {
-                Console.WriteLine("at version_comment");
-                SendPacket(LengthEncodedInteger(1));
-                SendPacket(GetVersionCommentHeaderPacket());
-                SendPacket(GetVersionCommentRowPacket());
-                SendEofPacket();
+                returnTable = _Database.Select(tokens);
+            }
+            else if (tokens[0].Text.ToLower() == "show")
+            {
+                returnTable = _Database.Show(tokens);
+            }
+            else if (tokens[0].Text.ToLower() == "set")
+            {
+                _Database.Set(tokens);
+                SendOkPacket();
                 return;
             }
 
-            // get query data
-            Header[] h =
+            Column[] h = returnTable.Columns;
+            Row[] r = returnTable.Rows;
+
+            Console.WriteLine("Cols:");
+            foreach (var col in h)
             {
-                    new Header { name = "Col1", type = "int" },
-                    new Header { name = "Col2", type = "str" }
-                };
-            Row[] r =
+                Console.WriteLine("\tname: {0}, type: {1}", col._ColumnName, col._ColumnType);
+            }
+            Console.WriteLine("Rows:");
+            foreach (var row in r)
             {
-                    new Row { Col1 = 1, Col2 = "ok" },
-                    new Row { Col1 = 1, Col2 = "A" }
-                };
-            QueryData data = new QueryData
-            {
-                headers = h,
-                rows = r
-            };
+                foreach (var v in row._Values)
+                {
+                    Console.WriteLine("\tvalue: " + v);
+                }
+            }
 
             // send length encoded packet
-            SendPacket(LengthEncodedInteger(data.headers.Length));
+            SendPacket(LengthEncodedInteger(h.Length));
 
-            // send data header packet
-            foreach (var header in data.headers)
+            // send column definition packet
+            SendColumnDefinition(h);
+
+            // send eof packet
+            // If the CLIENT_DEPRECATE_EOF client capability flag is set, OK_Packet is sent; else EOF_Packet is sent.
+            if (Convert.ToBoolean(_Client.Capabilities & CLIENT_DEPRECATE_EOF))
             {
-                SendPacket(GetHeaderPacket(header));
+                SendOkPacket();
+            }
+            else
+            {
+                SendEofPacket();
             }
 
-            // send data row packet
-            foreach (var row in data.rows)
-            {
-                SendPacket(GetRowPacket(row));
-            }
+            // send row packet
+            SendTextResultsetRow(r);
 
             // send eof packet
             SendEofPacket();
+            return;
         }
 
-
-        private byte[] GetHeaderPacket(Header h)
+        private void SendColumnDefinition(Column[] columns)
         {
-            List<byte> packet = new List<byte>();
-
-            int character_set = 33; //utf8_general_ci
-            int max_col_length = 1024; //This is totally made up.  it shouldn't be
-            byte column_type = 0xfd; //Fallback to varchar?
-            if (h.type == "int")
+            for (var i = 0; i < columns.Length; i++)
             {
-                column_type = 0x09;
+                Column column = columns[i];
+                List<byte> packet = new List<byte>();
+
+                int character_set = 33; // utf8_general_ci
+                int max_col_length = 1024; //This is totally made up.  it shouldn't be
+                byte column_type = (byte)column._ColumnType;
+                
+                packet.AddRange(LengthEncodedString("def")); // catalog
+                packet.AddRange(LengthEncodedString(column._ColumnName)); // schema-name
+                packet.AddRange(LengthEncodedString(column._TableName)); // virtual
+                packet.AddRange(LengthEncodedString(column._TableName)); // physical table-name
+                packet.AddRange(LengthEncodedString(column._ColumnName)); // virtual column name
+                packet.AddRange(LengthEncodedString(column._ColumnName)); // physical column name
+                packet.Add(0x0c); // length of the following fields (always 0x0c)
+                packet.AddRange(FixedLengthInteger(character_set, 2)); // character_set is the column character set and is defined in Protocol::CharacterSet.
+                packet.AddRange(FixedLengthInteger(max_col_length, 4)); // maximum length of the field
+                packet.AddRange(FixedLengthInteger(column_type, 1)); // column_type, type of the column as defined in Column Type
+
+                // flags
+                packet.Add(0x00);
+                packet.Add(0x00);
+
+                // decimals, max shown decimal digits
+                packet.Add(0x00); // 0x00 for integers and static strings
+                                  // 0x1f for dynamic strings, double, float
+                                  // 0x00 to 0x51 for decimals
+
+                packet.Add(0x00); //Filler
+                packet.Add(0x00);
+
+                SendPacket(packet.ToArray());
             }
-            else if (h.type == "str")
+        }
+
+
+        private void SendTextResultsetRow(Row[] rows)
+        {
+            for (var i = 0; i < rows.Length; i++)
             {
-                column_type = 0xfd;
+                Row row = rows[i];
+                List<byte> packet = new List<byte>();
+
+                for(var j=0; j < row._Values.Length; j++)
+                {
+                    packet.AddRange(LengthEncodedString(row._Values[j].ToString()));
+                }
+                SendPacket(packet.ToArray());
             }
-
-            packet.AddRange(LengthEncodedString("def"));
-            packet.AddRange(LengthEncodedString(h.name));
-            packet.AddRange(LengthEncodedString("virtual_table"));
-            packet.AddRange(LengthEncodedString("physical_table"));
-            packet.AddRange(LengthEncodedString(h.name));
-            packet.AddRange(LengthEncodedString(h.name));
-            packet.Add(0x0c);
-            packet.AddRange(FixedLengthInteger(character_set, 2));
-            packet.AddRange(FixedLengthInteger(max_col_length, 4));
-            packet.AddRange(FixedLengthInteger(column_type, 1));
-
-
-            packet.Add(0x00); //Flags?
-            packet.Add(0x00);
-
-            packet.Add(0x00); //Only doing ints/static strings now
-
-            packet.Add(0x00); //Filler
-            packet.Add(0x00);
-
-            return packet.ToArray();
-        }
-
-        private byte[] GetRowPacket(Row r)
-        {
-            Console.WriteLine("Send row {0}, {1}", r.Col1, r.Col2);
-            List<byte> packet = new List<byte>();
-            packet.AddRange(LengthEncodedString(r.Col1.ToString()));
-            packet.AddRange(LengthEncodedString(r.Col2.ToString()));
-            return packet.ToArray();
-        }
-
-        private byte[] GetVersionCommentHeaderPacket()
-        {
-            List<byte> packet = new List<byte>();
-
-            int character_set = 33; //utf8_general_ci
-            int max_col_length = 84;
-            byte column_type = 0xfd; //var string
-
-            packet.AddRange(LengthEncodedString("def"));
-            packet.AddRange(LengthEncodedString(""));
-            packet.AddRange(LengthEncodedString(""));
-            packet.AddRange(LengthEncodedString(""));
-            packet.AddRange(LengthEncodedString("@@version_comment"));
-            packet.Add(0x00);
-            packet.Add(0x0c);
-            packet.AddRange(FixedLengthInteger(character_set, 2)); //utf8_general_ci
-            packet.AddRange(FixedLengthInteger(max_col_length, 4));
-            packet.AddRange(FixedLengthInteger(column_type, 1)); // var string
-
-
-            packet.Add(0x00); //Flags
-            packet.Add(0x00);
-
-            packet.Add(0x1f); //Decimals: 31
-
-            packet.Add(0x00); //Filler
-            packet.Add(0x00);
-
-            return packet.ToArray();
-        }
-
-        private byte[] GetVersionCommentRowPacket()
-        {
-            return LengthEncodedString("MySQL Community Server (GPL)"); // TODO: simplify
         }
 
         #region Generic Response Packets
@@ -673,7 +679,7 @@ namespace MySqlServer
                 packet.Add(0x00);
 
                 // Status Flags
-                packet.Add(0x02);
+                packet.Add(0x22);
                 packet.Add(0x00);
             }
 
@@ -1092,23 +1098,5 @@ namespace MySqlServer
         }
 
         #endregion
-
-        public class QueryData
-        {
-            public Header[] headers { set; get; }
-            public Row[] rows { set; get; }
-        }
-
-        public class Header
-        {
-            public string name { set; get; }
-            public string type { set; get; }
-        }
-
-        public class Row
-        {
-            public int Col1 { get; set; }
-            public string Col2 { get; set; }
-        }
     }
 }

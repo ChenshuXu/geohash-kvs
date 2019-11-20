@@ -20,7 +20,7 @@ namespace MySqlTest
 
         static void ReadDataset()
         {
-            string connStr = "server=127.0.0.1;port=3307;uid=root;" +
+            string connStr = "server=127.0.0.1;port=3306;uid=root;" +
                 "pwd=" + root_password + ";SslMode=None";
             string connStr2 = "server=127.0.0.1;uid=xcs;" +
                 "pwd=" + user1_password + ";database=world";
@@ -30,6 +30,14 @@ namespace MySqlTest
                 Console.WriteLine("Connecting to MySQL...");
                 conn.Open();
                 Console.WriteLine("connected");
+
+                StringBuilder sCommand = new StringBuilder("SELECT * FROM dummy;");
+                //StringBuilder sCommand = new StringBuilder("SELECT * FROM sys.sys_config;");
+                using (MySqlCommand cmd = new MySqlCommand(sCommand.ToString(), conn))
+                {
+                    cmd.CommandType = CommandType.Text;
+                    cmd.ExecuteNonQuery();
+                }
             }
             catch (Exception ex)
             {
