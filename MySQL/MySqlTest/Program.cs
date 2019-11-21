@@ -31,13 +31,15 @@ namespace MySqlTest
                 conn.Open();
                 Console.WriteLine("connected");
 
-                StringBuilder sCommand = new StringBuilder("SELECT * FROM dummy;");
-                //StringBuilder sCommand = new StringBuilder("SELECT * FROM sys.sys_config;");
-                using (MySqlCommand cmd = new MySqlCommand(sCommand.ToString(), conn))
+                string sql = "SELECT * FROM dummy;";
+                MySqlCommand cmd = new MySqlCommand(sql, conn);
+                MySqlDataReader rdr = cmd.ExecuteReader();
+
+                while (rdr.Read())
                 {
-                    cmd.CommandType = CommandType.Text;
-                    cmd.ExecuteNonQuery();
+                    Console.WriteLine(rdr[0] + " -- " + rdr[1]);
                 }
+                rdr.Close();
             }
             catch (Exception ex)
             {

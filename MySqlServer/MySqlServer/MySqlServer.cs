@@ -78,7 +78,7 @@ namespace MySqlServer
 
         private ClientMetadata _Client = null;
 
-        private Database _Database;
+        private DatabaseController _DatabaseController;
 
         private X509Certificate2 _SslCertificate = null;
         private X509Certificate2Collection _SslCertificateCollection = null;
@@ -99,7 +99,7 @@ namespace MySqlServer
             _CertFilename = CertFilename;
             _CertPassword = CertPassword;
 
-            _Database = new Database();
+            _DatabaseController = new DatabaseController();
         }
 
         #endregion
@@ -380,8 +380,7 @@ namespace MySqlServer
             currentHead += NulTerminatedString_stringLength(usernameBytes);
             Console.WriteLine("username: {0}", usernameStr);
 
-            // TODO: Get user password from database
-            byte[] passwordInput = Encoding.ASCII.GetBytes(_Password);
+            byte[] correctPassword = Encoding.ASCII.GetBytes(_DatabaseController.GetUserPassword(usernameStr));
             bool passedVerification = false;
 
             // auth-response
@@ -397,7 +396,7 @@ namespace MySqlServer
                 currentHead += passwordLength;
                 Console.WriteLine("password length: {0}, {1}", passwordLength, ByteArrayToHexString(passwordBytes));
 
-                passedVerification = VerifyPassword(passwordBytes, passwordInput);
+                passedVerification = VerifyPassword(passwordBytes, correctPassword);
             }
             else if (Convert.ToBoolean(clientCapabilities & CLIENT_SECURE_CONNECTION))
             {
@@ -409,7 +408,7 @@ namespace MySqlServer
                 currentHead += passwordLength;
                 Console.WriteLine("password length: {0}, {1}", passwordLength, ByteArrayToHexString(passwordBytes));
 
-                passedVerification = VerifyPassword(passwordBytes, passwordInput);
+                passedVerification = VerifyPassword(passwordBytes, correctPassword);
             }
             else
             {
@@ -420,7 +419,7 @@ namespace MySqlServer
                 currentHead += passwordLength;
                 Console.WriteLine("password length: {0}, {1}", passwordLength, ByteArrayToHexString(password));
 
-                passedVerification = VerifyPassword(passwordBytes, passwordInput);
+                passedVerification = VerifyPassword(passwordBytes, correctPassword);
             }
 
             // If have database name input
@@ -431,7 +430,8 @@ namespace MySqlServer
                 string databaseName = NulTerminatedString_bytesToString(databaseNameBytes);
                 currentHead += NulTerminatedString_stringLength(databaseNameBytes);
                 Console.WriteLine("database string bytes length {0} name: {1}", NulTerminatedString_stringLength(databaseNameBytes), databaseName);
-                // TODO: set connected database name
+                // TODO: set connected database name, handle error if database not exist
+                _Client.ConnectedDatabase = databaseName;
             }
 
             // If has auth plugin name
@@ -475,7 +475,6 @@ namespace MySqlServer
             Array.Copy(data, packetLength, 3);
             int packetLengthInt = packetLength[0];
             Console.WriteLine("sql packet length: {0}", packetLengthInt);
-            Console.WriteLine("sequence: {0}", (int)sequence);
 
             // Get text protocol
             byte[] queryPacket = SubArray(data, 4, packetLengthInt);
@@ -511,19 +510,19 @@ namespace MySqlServer
                 Console.WriteLine("type: " + token.Type.ToString() + ", value: " + token.Text);
             }
 
-            Table returnTable = _Database.GetTable("dummy");
+            Table returnTable = _DatabaseController.GetDatabase("dummy").GetTable("dummy");
 
             if (tokens[0].Text.ToLower() == "select")
             {
-                returnTable = _Database.Select(tokens);
+                returnTable = _DatabaseController.Select(tokens);
             }
             else if (tokens[0].Text.ToLower() == "show")
             {
-                returnTable = _Database.Show(tokens);
+                returnTable = _DatabaseController.Show(tokens);
             }
             else if (tokens[0].Text.ToLower() == "set")
             {
-                _Database.Set(tokens);
+                _DatabaseController.Set(tokens);
                 SendOkPacket();
                 return;
             }
@@ -531,10 +530,11 @@ namespace MySqlServer
             Column[] h = returnTable.Columns;
             Row[] r = returnTable.Rows;
 
+            Console.WriteLine("Query results:");
             Console.WriteLine("Cols:");
             foreach (var col in h)
             {
-                Console.WriteLine("\tname: {0}, type: {1}", col._ColumnName, col._ColumnType);
+                Console.WriteLine("\tname: {0}, type: {1}", col.ColumnName, col._ColumnType);
             }
             Console.WriteLine("Rows:");
             foreach (var row in r)
@@ -553,9 +553,10 @@ namespace MySqlServer
 
             // send eof packet
             // If the CLIENT_DEPRECATE_EOF client capability flag is set, OK_Packet is sent; else EOF_Packet is sent.
+            // ?? which seems not correct. more info in https://dev.mysql.com/doc/internals/en/capability-flags.html
             if (Convert.ToBoolean(_Client.Capabilities & CLIENT_DEPRECATE_EOF))
             {
-                SendOkPacket();
+                //SendOkPacket();
             }
             else
             {
@@ -582,11 +583,11 @@ namespace MySqlServer
                 byte column_type = (byte)column._ColumnType;
                 
                 packet.AddRange(LengthEncodedString("def")); // catalog
-                packet.AddRange(LengthEncodedString(column._ColumnName)); // schema-name
-                packet.AddRange(LengthEncodedString(column._TableName)); // virtual
-                packet.AddRange(LengthEncodedString(column._TableName)); // physical table-name
-                packet.AddRange(LengthEncodedString(column._ColumnName)); // virtual column name
-                packet.AddRange(LengthEncodedString(column._ColumnName)); // physical column name
+                packet.AddRange(LengthEncodedString(column.ColumnName)); // schema-name
+                packet.AddRange(LengthEncodedString(column.TableName)); // virtual
+                packet.AddRange(LengthEncodedString(column.TableName)); // physical table-name
+                packet.AddRange(LengthEncodedString(column.ColumnName)); // virtual column name
+                packet.AddRange(LengthEncodedString(column.ColumnName)); // physical column name
                 packet.Add(0x0c); // length of the following fields (always 0x0c)
                 packet.AddRange(FixedLengthInteger(character_set, 2)); // character_set is the column character set and is defined in Protocol::CharacterSet.
                 packet.AddRange(FixedLengthInteger(max_col_length, 4)); // maximum length of the field

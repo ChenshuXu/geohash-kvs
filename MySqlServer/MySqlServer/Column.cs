@@ -5,8 +5,19 @@ namespace MySqlServer
 {
     public class Column
     {
-        public string _TableName = null;
-        public string _ColumnName = null;
+        internal string TableName
+        {
+            get { return _TableName; }
+            set { _TableName = value; }
+        }
+
+        internal string ColumnName
+        {
+            get { return _ColumnName; }
+            set { _ColumnName = value; }
+        }
+        private string _TableName = null;
+        private string _ColumnName = null;
         public TSQLTokenType _TokenType;
         public MySqlServer.ColumnType _ColumnType = MySqlServer.ColumnType.MYSQL_TYPE_VAR_STRING;
 

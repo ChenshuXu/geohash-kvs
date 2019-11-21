@@ -43,6 +43,12 @@ namespace MySqlServer
             set { _ClientCapabilities = value; }
         }
 
+        internal string ConnectedDatabase
+        {
+            get { return _ConnectedDB; }
+            set { _ConnectedDB = value; }
+        }
+
         internal CancellationTokenSource TokenSource { get; set; }
 
         internal CancellationToken Token { get; set; }
@@ -57,6 +63,7 @@ namespace MySqlServer
         private string _IpPort = null;
         private readonly object _Lock = new object();
         private uint _ClientCapabilities;
+        private string _ConnectedDB;
 
         #endregion
 

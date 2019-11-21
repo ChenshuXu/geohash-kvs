@@ -3,8 +3,13 @@ namespace MySqlServer
 {
     public class User
     {
-        public string _Username;
-        public string _Password;
+        internal string Password
+        {
+            get { return _Password; }
+            set { _Password = value; }
+        }
+        private string _Username;
+        private string _Password;
         public User(string username, string password)
         {
             _Username = username;
