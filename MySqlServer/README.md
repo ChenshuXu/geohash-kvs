@@ -6,10 +6,10 @@ Test server with command line in terminal:
 By default it will use ssl connection.
 
 Try `mysql> SELECT * FROM dummy;`will returns
-`+------+------+
-| Col1 | Col2 |
-+------+------+
-|    1 | ok   |
-|    2 | A    |
-+------+------+
+`+------+------+\n
+| Col1 | Col2 |\n
++------+------+\n
+|    1 | ok   |\n
+|    2 | A    |\n
++------+------+\n
 2 rows in set, 28416 warnings (0.00 sec)`
