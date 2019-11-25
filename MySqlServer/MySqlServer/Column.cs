@@ -19,9 +19,9 @@ namespace MySqlServer
         private string _TableName = null;
         private string _ColumnName = null;
         public TSQLTokenType _TokenType;
-        public MySqlServer.ColumnType _ColumnType = MySqlServer.ColumnType.MYSQL_TYPE_VAR_STRING;
+        public ClientMetadata.ColumnType _ColumnType = ClientMetadata.ColumnType.MYSQL_TYPE_VAR_STRING;
 
-        public Column(string colName = null, MySqlServer.ColumnType type = MySqlServer.ColumnType.MYSQL_TYPE_VAR_STRING)
+        public Column(string colName = null, ClientMetadata.ColumnType type = ClientMetadata.ColumnType.MYSQL_TYPE_VAR_STRING)
         {
             _ColumnName = colName;
             _ColumnType = type;

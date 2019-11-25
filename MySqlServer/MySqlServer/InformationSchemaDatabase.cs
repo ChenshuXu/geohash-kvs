@@ -11,7 +11,7 @@ namespace MySqlServer
             AddTable(informationSchema);
             informationSchema.AddColumns(new Column[]
             {
-                new Column("@@max_allowed_packet", MySqlServer.ColumnType.MYSQL_TYPE_LONGLONG),
+                new Column("@@max_allowed_packet",  ClientMetadata.ColumnType.MYSQL_TYPE_LONGLONG),
                 new Column("@@character_set_client"),
                 new Column("@@character_set_connection"),
                 new Column("@@license"),
@@ -43,13 +43,14 @@ namespace MySqlServer
             {
                 new Column("Collation"),
                 new Column("Charset"),
-                new Column("Id", MySqlServer.ColumnType.MYSQL_TYPE_LONGLONG),
+                new Column("Id", ClientMetadata.ColumnType.MYSQL_TYPE_LONGLONG),
                 new Column("Default"),
                 new Column("Compiled"),
-                new Column("Sortlen", MySqlServer.ColumnType.MYSQL_TYPE_LONGLONG)
+                new Column("Sortlen", ClientMetadata.ColumnType.MYSQL_TYPE_LONGLONG)
             });
 
-            string path = "../../../Resources/Collations.csv";
+            string path = "/Users/chenshuxu/Projects/geohash-kvs/MySqlServer/MySqlServer/Resources/Collations.csv";
+            // string path = "../../../Resources/Collations.csv";
             string[] lines = System.IO.File.ReadAllLines(path);
             //Console.WriteLine(lines[0]);
             for (int i = 0; i < lines.Length; i++)

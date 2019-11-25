@@ -30,13 +30,13 @@ namespace MySqlServer
             AddDatabase(dummyDB);
             Table dummyTable = new Table("dummy");
             dummyDB.AddTable(dummyTable);
-            dummyTable.AddColumns( new Column[]
+            dummyTable.AddColumns(new Column[]
             {
-                new Column("Col1", MySqlServer.ColumnType.MYSQL_TYPE_LONGLONG),
+                new Column("Col1", ClientMetadata.ColumnType.MYSQL_TYPE_LONGLONG),
                 new Column("Col2")
             });
 
-            dummyTable.AddRows( new Row[]
+            dummyTable.AddRows(new Row[]
             {
                 new Row( new Object[] { 1, "ok"} ),
                 new Row( new Object[] { 2, "A"} )
@@ -152,7 +152,7 @@ namespace MySqlServer
             }
 
             Console.WriteLine("QUERY after processed");
-            foreach(var col in outPutColumns)
+            foreach (var col in outPutColumns)
             {
                 Console.WriteLine("\ttable name: {0}, column name: {1}", col.TableName, col.ColumnName);
             }
@@ -262,7 +262,7 @@ namespace MySqlServer
         {
             Table virtualTable = new Table("");
             virtualTable.AddColumn(
-                new Column("TIMEDIFF(NOW(), UTC_TIMESTAMP())", MySqlServer.ColumnType.MYSQL_TYPE_TIME)
+                new Column("TIMEDIFF(NOW(), UTC_TIMESTAMP())", ClientMetadata.ColumnType.MYSQL_TYPE_TIME)
             );
             virtualTable.AddRow(
                 new Row(

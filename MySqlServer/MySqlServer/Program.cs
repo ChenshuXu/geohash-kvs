@@ -12,8 +12,13 @@ namespace MySqlServer
     {
         static void Main(string[] args)
         {
-            MySqlServer server = new MySqlServer("../../../certs/server-cert.p12", "pswd");
-            server.ExecuteServer();
+            Server server = new Server(
+                "127.0.0.1",
+                3306,
+                "../../../certs/server-cert.p12",
+                "pswd"
+                );
+            server.StartSync();
         }
     }
 }
