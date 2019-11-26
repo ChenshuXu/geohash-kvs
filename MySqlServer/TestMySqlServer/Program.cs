@@ -1,10 +1,6 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Data;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using MySql.Data;
 using MySql.Data.MySqlClient;
 using MySqlServer;
 
@@ -23,21 +19,28 @@ namespace MySqlTest
                 certPath,
                 "pswd"
                 );
+            server.Debug = true;
 
             Task.Run(() => server.StartSync());
 
             Thread.Sleep(1000);
 
-            ReadDataset();
+            string connStr_NoSSL = "server=127.0.0.1;port=3306;uid=root;" +
+                "pwd=" + root_password + ";SslMode=None";
+
+            string connStr_SSL = "server=127.0.0.1;port=3306;uid=root;" +
+                "pwd=" + root_password;
+
+            ReadDataset(connStr_NoSSL);
+            //Thread.Sleep(1000);
+            //ReadDataset(connStr_NoSSL);
+            //ReadDataset(connStr_SSL);
 
             Console.WriteLine("Test passed");
         }
 
-        static void ReadDataset()
+        static void ReadDataset(string connStr)
         {
-            string connStr = "server=127.0.0.1;port=3306;uid=root;" +
-                "pwd=" + root_password + ";SslMode=None";
-
             MySqlConnection conn = new MySqlConnection(connStr);
             try
             {

@@ -17,6 +17,8 @@ namespace MySqlServer
         private Dictionary<String, User> _Users = new Dictionary<string, User>();
         private string _DefaultDatabaseName = "dummy";
 
+        public bool Debug = false;
+
         public DatabaseController()
         {
             // build root user
@@ -79,12 +81,12 @@ namespace MySqlServer
             // select clause
             // get output columns
             PopAndCheck(ref tokens, "select");
-            Console.WriteLine("SELECT:");
+            Log("SELECT:");
 
             // handle select TIMEDIFF
             if (tokens[0].Text == "TIMEDIFF")
             {
-                Console.WriteLine("TIMEDIFF:");
+                Log("TIMEDIFF:");
                 return HandleTimediff(tokens);
             }
 
@@ -95,7 +97,7 @@ namespace MySqlServer
             {
                 Column qualifiedColumnName = GetQualifiedColumnName(ref tokens);
                 outPutColumns.Add(qualifiedColumnName);
-                Console.WriteLine("\ttable name: {0}, column name: {1}", qualifiedColumnName.TableName, qualifiedColumnName.ColumnName);
+                Log("\ttable name: {"+ qualifiedColumnName.TableName + "}, column name: {"+ qualifiedColumnName.ColumnName + "}");
                 // Handle veriable tokens
                 if (qualifiedColumnName._TokenType == TSQLTokenType.Variable)
                 {
@@ -132,11 +134,11 @@ namespace MySqlServer
             if (!readingVariable)
             {
                 PopAndCheck(ref tokens, "from");
-                Console.WriteLine("FROM:");
+                Log("FROM:");
                 Table tableNameObj = GetQualifiedTableName(ref tokens);
                 // TODO: from database
                 fromTable = GetDatabase(tableNameObj.DatabaseName).GetTable(tableNameObj.TableName); // TODO: throw error when table name not exist
-                Console.WriteLine("\tdb name: {0}, table name: {1}", fromTable.DatabaseName, fromTable.TableName);
+                Log("\tdb name: {"+ fromTable.DatabaseName + "}, table name: {"+ fromTable.TableName + "}");
                 // TODO: throw error when have join keyword,
                 // only support from one table,
                 // only support table from dummy database
@@ -145,18 +147,18 @@ namespace MySqlServer
             }
 
             // TODO: remaining clause
-            Console.WriteLine("remaining tokens:");
+            Log("remaining tokens:");
             foreach (var token in tokens)
             {
-                Console.WriteLine("\ttype: " + token.Type.ToString() + ", value: " + token.Text);
+                Log("\ttype: " + token.Type.ToString() + ", value: " + token.Text);
             }
 
-            Console.WriteLine("QUERY after processed");
+            Log("QUERY after processed");
             foreach (var col in outPutColumns)
             {
-                Console.WriteLine("\ttable name: {0}, column name: {1}", col.TableName, col.ColumnName);
+                Log("\ttable name: {"+ col.TableName + "}, column name: {"+ col.ColumnName + "}");
             }
-            Console.WriteLine("\tfrom table info, db name: {0}, table name: {1}", fromTable.DatabaseName, fromTable.TableName);
+            Log("\tfrom table info, db name: {"+ fromTable.DatabaseName + "}, table name: {"+ fromTable.TableName + "}");
 
 
             // TODO: add column information to virtual table
@@ -271,6 +273,11 @@ namespace MySqlServer
             );
 
             return virtualTable;
+        }
+
+        public void Log(string msg)
+        {
+            if (Debug) Console.WriteLine(msg);
         }
     }
 }

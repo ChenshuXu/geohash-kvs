@@ -10,11 +10,62 @@ using System.Collections.Concurrent;
 using System.Threading.Tasks;
 using System.Threading;
 using System.IO;
+using System.Text;
 
 namespace MySqlServer
 {
     public class Server
     {
+        /// <summary>
+        /// Buffer size to use when reading input and output streams.  Default is 65536.
+        /// </summary>
+        public int StreamBufferSize
+        {
+            get
+            {
+                return _ReceiveBufferSize;
+            }
+            set
+            {
+                if (value < 1) throw new ArgumentException("Read stream buffer size must be greater than zero.");
+                _ReceiveBufferSize = value;
+            }
+        }
+
+        /// <summary>
+        /// Maximum amount of time to wait before considering a client idle and disconnecting them. 
+        /// By default, this value is set to 0, which will never disconnect a client due to inactivity.
+        /// The timeout is reset any time a message is received from a client or a message is sent to a client.
+        /// For instance, if you set this value to 30, the client will be disconnected if the server has not received a message from the client within 30 seconds or if a message has not been sent to the client in 30 seconds.
+        /// </summary>
+        public int IdleClientTimeoutSeconds
+        {
+            get
+            {
+                return _IdleClientTimeoutSeconds;
+            }
+            set
+            {
+                if (value < 0) throw new ArgumentException("IdleClientTimeoutSeconds must be zero or greater.");
+                _IdleClientTimeoutSeconds = value;
+            }
+        }
+
+        public string CertFilename
+        {
+            get { return _CertFilename; }
+        }
+
+        public string CertPassword
+        {
+            get { return _CertPassword; }
+        }
+
+        /// <summary>
+        /// Enable or disable console debugging.
+        /// </summary>
+        public bool Debug = false;
+
         // Enable or disable acceptance of invalid SSL certificates.
         public bool AcceptInvalidCertificates = true;
         // Enable or disable mutual authentication of SSL client and server.
@@ -43,46 +94,41 @@ namespace MySqlServer
         private int _IdleClientTimeoutSeconds = 0;
 
         private string _ListenerIp;
+        private int _ListenerPort;
         private IPAddress _IPAddress;
-        private int _Port;
-        private bool _UseSsl = false;
+        private TcpListener _Listener = null;
         private string _CertFilename;
         private string _CertPassword;
 
-        private X509Certificate2 _SslCertificate = null;
-        private X509Certificate2Collection _SslCertificateCollection = null;
-
+        private ConcurrentDictionary<string, DateTime> _UnauthenticatedClients = new ConcurrentDictionary<string, DateTime>();
         private ConcurrentDictionary<string, ClientMetadata> _Clients = new ConcurrentDictionary<string, ClientMetadata>();
         private ConcurrentDictionary<string, DateTime> _ClientsLastSeen = new ConcurrentDictionary<string, DateTime>();
         private ConcurrentDictionary<string, DateTime> _ClientsKicked = new ConcurrentDictionary<string, DateTime>();
         private ConcurrentDictionary<string, DateTime> _ClientsTimedout = new ConcurrentDictionary<string, DateTime>();
         
-        private TcpListener _Listener = null;
-        private bool _Running;
-
         private CancellationTokenSource _TokenSource = new CancellationTokenSource();
         private CancellationToken _Token;
 
         private DatabaseController _DatabaseController;
 
-        private bool Debug = true;
-
         #region Constructors-and-Factories
 
-        public Server(string listenerIp= "127.0.0.1", int port=3306, string CertFilename=null, string CertPassword=null)
+        public Server(string listenerIp= "127.0.0.1",
+            int port=3306,
+            string CertFilename=null,
+            string CertPassword=null)
         {
-            if (String.IsNullOrEmpty(listenerIp)) throw new ArgumentNullException(nameof(listenerIp));
-            if (port < 0) throw new ArgumentException("Port must be zero or greater.");
-
             _ListenerIp = listenerIp;
             _IPAddress = IPAddress.Parse(_ListenerIp);
-            _Port = port;
+            _ListenerPort = port;
             _CertFilename = CertFilename;
             _CertPassword = CertPassword;
-            _Running = false;
             _Token = _TokenSource.Token;
 
             _DatabaseController = new DatabaseController();
+            _DatabaseController.Debug = Debug;
+
+            Task.Run(() => MonitorForIdleClients(), _Token);
         }
 
         #endregion
@@ -90,63 +136,34 @@ namespace MySqlServer
         #region Public-Methods
 
         /// <summary>
-        /// Start synchronous server
+        /// Start synchronous server, single client
         /// </summary>
         public void StartSync()
         {
             _IPAddress = IPAddress.Parse(_ListenerIp);
-            _Listener = new TcpListener(_IPAddress, _Port);
+            _Listener = new TcpListener(_IPAddress, _ListenerPort);
             _Listener.Start();
-            ClientMetadata client;
+            
             while (true)
             {
                 try
                 {
                     Log("Waiting connection ... ");
-                    byte[] buffer;
                     // Setup client
                     TcpClient tcpClient = _Listener.AcceptTcpClient();
-                    client = new ClientMetadata(tcpClient);
+                    ClientMetadata client = new ClientMetadata(tcpClient, this, _DatabaseController);
+                    client.Debug = Debug;
 
                     client.ClientConnected();
 
-                    if (client._UseSsl)
+                    while(true)
                     {
-                        _SslCertificate = new X509Certificate2(_CertFilename, _CertPassword);
-
-                        _SslCertificateCollection = new X509Certificate2Collection { _SslCertificate };
-
-                        if (AcceptInvalidCertificates)
-                        {
-                            client.SslStream = new SslStream(client.NetworkStream, false, new RemoteCertificateValidationCallback(AcceptCertificate));
-                        }
-                        else
-                        {
-                            client.SslStream = new SslStream(client.NetworkStream, false);
-                        }
-
-                        bool success = StartTls(client);
-
-                        if (!success)
-                        {
-                            client.Dispose();
-                        }
-                        else
-                        {
-                            buffer = new byte[_ReceiveBufferSize];
-                            client.SslStream.Read(buffer);
-                            client.DataReceived(buffer);
-                        }
-                    }
-
-                    while (client._ServerPhase == ClientMetadata.Phase.CommandPhase)
-                    {
-                        buffer = new Byte[_ReceiveBufferSize];
+                        byte[] buffer = new Byte[StreamBufferSize];
                         if (!client._UseSsl)
                         {
                             client.NetworkStream.Read(buffer);
                         }
-                        else
+                        else if (client._UseSsl)
                         {
                             client.SslStream.Read(buffer);
                         }
@@ -156,79 +173,304 @@ namespace MySqlServer
                 }
                 catch (Exception e)
                 {
-                    Log("disconnect");
                     Console.WriteLine(e.ToString());
                 }
             }
         }
 
         /// <summary>
-        /// Start asynchronous server
+        /// Start asynchronous server, multi client
         /// </summary>
         /// <returns></returns>
         public void StartAsync()
         {
+            Log("server starting on " + _ListenerIp + ":" + _ListenerPort);
+            _Listener = new TcpListener(_IPAddress, _ListenerPort);
+            _Listener.Start();
 
+            _Clients = new ConcurrentDictionary<string, ClientMetadata>();
+
+            Task.Run(() => AcceptConnections(), _Token);
         }
 
         #endregion
 
         #region Private-Methods
 
-        #region Tcp connection part
-
-        private bool StartTls(ClientMetadata client)
+        private async Task ClientConnected(string ipPort)
         {
-            try
-            {
-                client.SslStream.AuthenticateAsServer(
-                    _SslCertificate,
-                    MutuallyAuthenticate,
-                    SslProtocols.Tls12,
-                    !AcceptInvalidCertificates);
-
-                if (!client.SslStream.IsEncrypted)
-                {
-                    Log("[" + client.IpPort + "] not encrypted");
-                    client.Dispose();
-                    return false;
-                }
-
-                if (!client.SslStream.IsAuthenticated)
-                {
-                    Log("[" + client.IpPort + "] stream not authenticated");
-                    client.Dispose();
-                    return false;
-                }
-
-                if (MutuallyAuthenticate && !client.SslStream.IsMutuallyAuthenticated)
-                {
-                    Log("[" + client.IpPort + "] failed mutual authentication");
-                    client.Dispose();
-                    return false;
-                }
-            }
-            catch (Exception e)
-            {
-                Log("[" + client.IpPort + "] TLS exception" + Environment.NewLine + e.ToString());
-                client.Dispose();
-                return false;
-            }
-            Log("ssl stream ok");
-            return true;
+            Log("[" + ipPort + "] client connected");
+            _Clients[ipPort].ClientConnected();
         }
 
-        private bool AcceptCertificate(object sender, X509Certificate certificate, X509Chain chain, SslPolicyErrors sslPolicyErrors)
+        private async Task DataReceived(string ipPort, byte[] data)
         {
-            // return true; // Allow untrusted certificates.
-            return AcceptInvalidCertificates;
+            Log("[" + ipPort + "]data received");
+            _Clients[ipPort].DataReceived(data);
+        }
+
+        private async Task ClientDisconnected(string ipPort, DisconnectReason reason)
+        {
+            Log("[" + ipPort + "] client disconnected: " + reason.ToString());
+            _Clients[ipPort].ClientDisconnected();
+        }
+
+        /// <summary>
+        /// Disconnects the specified client.
+        /// </summary>
+        /// <param name="ipPort">IP:port of the client.</param>
+        public void DisconnectClient(string ipPort)
+        {
+            if (String.IsNullOrEmpty(ipPort)) throw new ArgumentNullException(nameof(ipPort));
+
+            if (!_Clients.TryGetValue(ipPort, out ClientMetadata client))
+            {
+                Log("*** DisconnectClient unable to find client " + ipPort);
+            }
+            else
+            {
+                if (!_ClientsTimedout.ContainsKey(ipPort))
+                {
+                    Log("[" + ipPort + "] kicking");
+                    _ClientsKicked.TryAdd(ipPort, DateTime.Now);
+                }
+
+                _Clients.TryRemove(client.IpPort, out ClientMetadata destroyed);
+                client.Dispose();
+                Log("[" + ipPort + "] disposed");
+            }
+        }
+
+        #region Tcp connection part
+
+        private async void AcceptConnections()
+        {
+            while (!_Token.IsCancellationRequested)
+            {
+                ClientMetadata client = null;
+
+                try
+                {
+                    TcpClient tcpClient = await _Listener.AcceptTcpClientAsync();
+                    string clientIp = tcpClient.Client.RemoteEndPoint.ToString();
+
+                    client = new ClientMetadata(tcpClient, this, _DatabaseController);
+                    client.Debug = Debug;
+
+                    _Clients.TryAdd(clientIp, client);
+                    _ClientsLastSeen.TryAdd(clientIp, DateTime.Now);
+
+                    Log( "[" + clientIp + "] starting data receiver");
+
+                    await Task.Run(() => ClientConnected(clientIp));
+
+                    Task dataRecv = Task.Run(() => DataReceiver(client), _Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+                catch (ObjectDisposedException)
+                {
+                    if (client != null) client.Dispose();
+                    continue;
+                }
+                catch (Exception e)
+                {
+                    if (client != null) client.Dispose();
+                    Log("*** AcceptConnections exception: " + e.ToString());
+                    continue;
+                }
+                finally
+                {
+                }
+            }
+        }
+
+
+        private async Task DataReceiver(ClientMetadata client)
+        {
+            string header = "[" + client.IpPort + "]";
+            Log(header + " data receiver started");
+            Task unawaited = null;
+
+            while (true)
+            {
+                try
+                {
+                    if (!IsClientConnected(client.TcpClient))
+                    {
+                        Log(header + " client no longer connected");
+                        break;
+                    }
+
+                    if (client.Token.IsCancellationRequested)
+                    {
+                        Log(header + " cancellation requested");
+                        break;
+                    }
+
+                    byte[] data = await DataReadAsync(client);
+                    if (data == null)
+                    {
+                        await Task.Delay(30);
+                        continue;
+                    }
+
+                    unawaited = Task.Run(() => DataReceived(client.IpPort, data));
+                    
+                }
+                catch (Exception e)
+                {
+                    Log(
+                        Environment.NewLine +
+                        header + " data receiver exception:" +
+                        Environment.NewLine +
+                        e.ToString() +
+                        Environment.NewLine);
+
+                    break;
+                }
+            }
+
+            Log(header + " data receiver terminated");
+
+            unawaited = null;
+
+            if (_ClientsKicked.ContainsKey(client.IpPort))
+            {
+                unawaited = Task.Run(() => ClientDisconnected(client.IpPort, DisconnectReason.Kicked));
+            }
+            else if (_ClientsTimedout.ContainsKey(client.IpPort))
+            {
+                unawaited = Task.Run(() => ClientDisconnected(client.IpPort, DisconnectReason.Timeout));
+            }
+            else
+            {
+                unawaited = Task.Run(() => ClientDisconnected(client.IpPort, DisconnectReason.Normal));
+            }
+            
+
+            DateTime removedTs;
+            _Clients.TryRemove(client.IpPort, out ClientMetadata destroyed);
+            _ClientsLastSeen.TryRemove(client.IpPort, out removedTs);
+            _ClientsKicked.TryRemove(client.IpPort, out removedTs);
+            _ClientsTimedout.TryRemove(client.IpPort, out removedTs);
+
+            client.Dispose();
+        }
+
+        private async Task<byte[]> DataReadAsync(ClientMetadata client)
+        {
+            if (client.Token.IsCancellationRequested) throw new OperationCanceledException();
+            if (!client.NetworkStream.CanRead) return null;
+            if (!client.NetworkStream.DataAvailable) return null;
+
+            byte[] buffer = new byte[_ReceiveBufferSize];
+            int read = 0;
+
+            while (true)
+            {
+                using (MemoryStream ms = new MemoryStream())
+                {
+                    if (!client._UseSsl)
+                    {
+                        //Log("read NetworkStream");
+                        read = await client.NetworkStream.ReadAsync(buffer, 0, buffer.Length);
+                    }
+                    else if (client._UseSsl)
+                    {
+                        //Log("read SslStream");
+                        read = await client.SslStream.ReadAsync(buffer, 0, buffer.Length);
+                    }
+
+                    if (read > 0)
+                    {
+                        ms.Write(buffer, 0, read);
+                        return ms.ToArray();
+                    }
+                    else
+                    {
+                        throw new SocketException();
+                    }
+                }
+            }
+        }
+
+        private async Task MonitorForIdleClients()
+        {
+            while (!_Token.IsCancellationRequested)
+            {
+                if (_IdleClientTimeoutSeconds > 0 && _ClientsLastSeen.Count > 0)
+                {
+                    MonitorForIdleClientsTask();
+                }
+                await Task.Delay(5000, _Token);
+            }
+        }
+
+        private void MonitorForIdleClientsTask()
+        {
+            DateTime idleTimestamp = DateTime.Now.AddSeconds(-1 * _IdleClientTimeoutSeconds);
+
+            foreach (KeyValuePair<string, DateTime> curr in _ClientsLastSeen)
+            {
+                if (curr.Value < idleTimestamp)
+                {
+                    _ClientsTimedout.TryAdd(curr.Key, DateTime.Now);
+                    Log("Disconnecting client " + curr.Key + " due to idle timeout");
+                    DisconnectClient(curr.Key);
+                }
+            }
+        }
+
+        private void UpdateClientLastSeen(string ipPort)
+        {
+            if (_ClientsLastSeen.ContainsKey(ipPort))
+            {
+                DateTime ts;
+                _ClientsLastSeen.TryRemove(ipPort, out ts);
+            }
+
+            _ClientsLastSeen.TryAdd(ipPort, DateTime.Now);
+        }
+
+        private bool IsClientConnected(System.Net.Sockets.TcpClient client)
+        {
+            if (client.Connected)
+            {
+                if ((client.Client.Poll(0, SelectMode.SelectWrite)) && (!client.Client.Poll(0, SelectMode.SelectError)))
+                {
+                    byte[] buffer = new byte[1];
+                    if (client.Client.Receive(buffer, SocketFlags.Peek) == 0)
+                    {
+                        return false;
+                    }
+                    else
+                    {
+                        return true;
+                    }
+                }
+                else
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                return false;
+            }
         }
 
         #endregion
 
-        private void Log(string msg)
+        public void Log(string msg)
         {
-            if (Debug) Console.WriteLine(msg);
+            if (Debug)
+            {
+                string timeStr = DateTime.Now.Minute.ToString() + '.' + DateTime.Now.Second.ToString() + '.' + DateTime.Now.Millisecond.ToString();
+                Console.WriteLine("[" + timeStr + "]" + msg);
+            }
         }
 
         #endregion

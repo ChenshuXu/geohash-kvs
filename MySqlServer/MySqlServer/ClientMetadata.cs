@@ -4,7 +4,9 @@ using System.Linq;
 using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
+using System.Security.Authentication;
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -56,60 +58,54 @@ namespace MySqlServer
 
         #region Public-Members
 
-        internal System.Net.Sockets.TcpClient Client
+        public TcpClient TcpClient
         {
             get { return _TcpClient; }
         }
-         
-        internal NetworkStream NetworkStream
+
+        public NetworkStream NetworkStream
         {
             get { return _NetworkStream; }
         }
 
-        internal SslStream SslStream
+        public SslStream SslStream
         {
             get { return _SslStream; }
             set { _SslStream = value; }
         }
 
-        internal string IpPort
+        public string IpPort
         {
             get { return _IpPort; }
         }
 
-        internal object SendLock
-        {
-            get { return _Lock; }
-        }
-
-        internal uint Capabilities
-        {
-            get { return _ClientCapabilities; }
-            set { _ClientCapabilities = value; }
-        }
-
-        internal string ConnectedDatabase
+        public string ConnectedDatabase
         {
             get { return _ConnectedDB; }
             set { _ConnectedDB = value; }
         }
 
-        internal CancellationTokenSource TokenSource { get; set; }
+        public CancellationTokenSource TokenSource { get; set; }
 
-        internal CancellationToken Token { get; set; }
+        public CancellationToken Token { get; set; }
 
         #endregion
 
         #region Private-Members
 
+        private Server _Server;
+
+        // ssl related members
+        private X509Certificate2 _SslCertificate = null;
+        private X509Certificate2Collection _SslCertificateCollection = null;
+
         // tcp connection related members
         private int _ReceiveBufferSize = 4096;
-        private System.Net.Sockets.TcpClient _TcpClient = null;
+        private TcpClient _TcpClient = null;
         private NetworkStream _NetworkStream = null;
         private SslStream _SslStream = null;
         private string _IpPort = null;
         public bool _UseSsl = false;
-        private readonly object _Lock = new object();
 
         // mysql server related members
         private uint _ClientCapabilities;
@@ -121,24 +117,23 @@ namespace MySqlServer
         private byte[] _Salt1; // 8 bytes
         private byte[] _Salt2; // 12 bytes
 
-        private bool Debug = true;
+        public bool Debug = false;
 
         #endregion
 
         #region Constructors-and-Factories
 
-        public ClientMetadata(TcpClient tcp)
+        public ClientMetadata(TcpClient tcp, Server server, DatabaseController db)
         {
             if (tcp == null) throw new ArgumentNullException(nameof(tcp));
+
+            _Server = server;
 
             _TcpClient = tcp;
             _NetworkStream = tcp.GetStream();
             _IpPort = tcp.Client.RemoteEndPoint.ToString();
-            TokenSource = new CancellationTokenSource();
-            Token = TokenSource.Token;
 
-            // TODO: all should connect to same DatabaseController object
-            _DatabaseController = new DatabaseController();
+            _DatabaseController = db;
             _ServerPhase = Phase.Waiting;
         }
         #endregion
@@ -147,20 +142,48 @@ namespace MySqlServer
 
         public void ClientConnected()
         {
-            Console.WriteLine("client connected");
-            Console.WriteLine("start handshake");
+            LogBasic("start handshake");
             SetState(Phase.ConnectionPhase);
             HandleHandshake();
 
             byte[] buffer = new byte[_ReceiveBufferSize];
-            NetworkStream.Read(buffer);
+            _NetworkStream.Read(buffer);
             HandleHandshakeResponse(buffer);
+
+            if (_UseSsl)
+            {
+                Log("use ssl");
+                _SslCertificate = new X509Certificate2(_Server.CertFilename, _Server.CertPassword);
+
+                _SslCertificateCollection = new X509Certificate2Collection { _SslCertificate };
+
+                if (_Server.AcceptInvalidCertificates)
+                {
+                    _SslStream = new SslStream(_NetworkStream, false, new RemoteCertificateValidationCallback(AcceptCertificate));
+                }
+                else
+                {
+                    _SslStream = new SslStream(_NetworkStream, false);
+                }
+
+                bool success = StartTls();
+
+                if (!success)
+                {
+                    Dispose();
+                }
+                else
+                {
+                    Log("start tls success");
+                }
+            }
         }
 
         public void DataReceived(byte[] data)
         {
             if (_ServerPhase == Phase.ConnectionPhase)
             {
+                Log("handshake after start tls");
                 HandleHandshakeResponse(data);
             }
             else if (_ServerPhase == Phase.CommandPhase)
@@ -170,36 +193,13 @@ namespace MySqlServer
             }
         }
 
-        public void ClientDisconnected(Server.DisconnectReason reason = Server.DisconnectReason.Normal)
+        public void ClientDisconnected()
         {
-            Dispose();
-        }
-
-        public async Task ClientConnected(string ipPort)
-        {
-            Console.WriteLine("[" + ipPort + "] client connected");
-        }
-
-        public async Task DataReceived(string ipPort, byte[] data)
-        {
-            Console.WriteLine("[" + ipPort + "]: " + Encoding.UTF8.GetString(data));
-        }
-
-        public async Task ClientDisconnected(string ipPort, Server.DisconnectReason reason)
-        {
-            Console.WriteLine("[" + ipPort + "] client disconnected: " + reason.ToString());
             Dispose();
         }
 
         public void Dispose()
         {
-            if (TokenSource != null)
-            {
-                if (!TokenSource.IsCancellationRequested) TokenSource.Cancel();
-                TokenSource.Dispose();
-                TokenSource = null;
-            }
-
             if (_SslStream != null)
             {
                 _SslStream.Close();
@@ -226,9 +226,55 @@ namespace MySqlServer
 
         #region Private-Methods
 
+        private bool StartTls()
+        {
+            try
+            {
+                _SslStream.AuthenticateAsServer(
+                    _SslCertificate,
+                    _Server.MutuallyAuthenticate,
+                    SslProtocols.Tls12,
+                    !_Server.AcceptInvalidCertificates);
+                if (!_SslStream.IsEncrypted)
+                {
+                    Log("[" + IpPort + "] not encrypted");
+                    Dispose();
+                    return false;
+                }
+
+                if (!_SslStream.IsAuthenticated)
+                {
+                    Log("[" + IpPort + "] stream not authenticated");
+                    Dispose();
+                    return false;
+                }
+
+                if (_Server.MutuallyAuthenticate && !_SslStream.IsMutuallyAuthenticated)
+                {
+                    Log("[" + IpPort + "] failed mutual authentication");
+                    Dispose();
+                    return false;
+                }
+            }
+            catch (Exception e)
+            {
+                Log("[" + IpPort + "] TLS exception" + Environment.NewLine + e.ToString());
+                Dispose();
+                return false;
+            }
+            Log("ssl stream ok");
+            return true;
+        }
+
+        private bool AcceptCertificate(object sender, X509Certificate certificate, X509Chain chain, SslPolicyErrors sslPolicyErrors)
+        {
+            // return true; // Allow untrusted certificates.
+            return _Server.AcceptInvalidCertificates;
+        }
+
         private void DisconnectClient()
         {
-            Log("disconnect");
+            LogBasic("disconnect");
             Dispose();
         }
 
@@ -304,7 +350,7 @@ namespace MySqlServer
             packet.AddRange(NulTerminatedString("mysql_native_password"));
 
             SendPacket(packet.ToArray());
-            Console.WriteLine("send initial handshake");
+            Log("send initial handshake");
         }
 
         /// <summary>
@@ -321,10 +367,10 @@ namespace MySqlServer
             byte[] packetLengthBytes = new byte[3];
             Array.Copy(data, packetLengthBytes, 3);
             int packetLengthInt = FixedLengthInteger_toInt(packetLengthBytes);
-            Console.WriteLine("packetLength: {0}", packetLengthInt);
+            Log("packetLength: " + packetLengthInt);
 
             byte sequence = data[3];
-            //Console.WriteLine("sequence: {0}", (int)sequence);
+            //Log("sequence: {0}", (int)sequence);
 
             // get login request package
             byte[] loginRequestBytes = SubArray(data, 4, packetLengthInt);
@@ -351,7 +397,6 @@ namespace MySqlServer
             if (Convert.ToBoolean(clientCapabilities & CLIENT_SSL) && !_UseSsl)
             {
                 _UseSsl = true;
-                Console.WriteLine("switch to ssl");
                 return;
             }
 
@@ -360,7 +405,7 @@ namespace MySqlServer
             byte[] usernameBytes = SubArray(loginRequestBytes, currentHead, packetLengthInt - currentHead);
             string usernameStr = NulTerminatedString_bytesToString(usernameBytes);
             currentHead += NulTerminatedString_stringLength(usernameBytes);
-            Console.WriteLine("username: {0}", usernameStr);
+            Log("username: " + usernameStr);
 
             byte[] correctPassword = Encoding.ASCII.GetBytes(_DatabaseController.GetUserPassword(usernameStr));
             bool passedVerification = false;
@@ -376,7 +421,7 @@ namespace MySqlServer
 
                 byte[] passwordBytes = SubArray(loginRequestBytes, currentHead, passwordLength);
                 currentHead += passwordLength;
-                Console.WriteLine("password length: {0}, {1}", passwordLength, ByteArrayToHexString(passwordBytes));
+                Log("password length: {"+ passwordLength + "}, {"+ ByteArrayToHexString(passwordBytes) + "}");
 
                 passedVerification = VerifyPassword(passwordBytes, correctPassword);
             }
@@ -388,7 +433,7 @@ namespace MySqlServer
 
                 byte[] passwordBytes = SubArray(loginRequestBytes, currentHead, passwordLength);
                 currentHead += passwordLength;
-                Console.WriteLine("password length: {0}, {1}", passwordLength, ByteArrayToHexString(passwordBytes));
+                Log("password length: {" + passwordLength + "}, {" + ByteArrayToHexString(passwordBytes) + "}");
 
                 passedVerification = VerifyPassword(passwordBytes, correctPassword);
             }
@@ -399,7 +444,7 @@ namespace MySqlServer
                 int passwordLength = NulTerminatedString_stringLength(passwordBytes);
                 byte[] password = SubArray(loginRequestBytes, currentHead, passwordLength);
                 currentHead += passwordLength;
-                Console.WriteLine("password length: {0}, {1}", passwordLength, ByteArrayToHexString(password));
+                Log("password length: {" + passwordLength + "}, {" + ByteArrayToHexString(passwordBytes) + "}");
 
                 passedVerification = VerifyPassword(passwordBytes, correctPassword);
             }
@@ -411,7 +456,7 @@ namespace MySqlServer
                 byte[] databaseNameBytes = SubArray(loginRequestBytes, currentHead, packetLengthInt - currentHead);
                 string databaseName = NulTerminatedString_bytesToString(databaseNameBytes);
                 currentHead += NulTerminatedString_stringLength(databaseNameBytes);
-                Console.WriteLine("database string bytes length {0} name: {1}", NulTerminatedString_stringLength(databaseNameBytes), databaseName);
+                Log("database string bytes length {"+ NulTerminatedString_stringLength(databaseNameBytes) + "} name: {"+ databaseName + "}");
                 // TODO: set connected database name, handle error if database not exist
                 _ConnectedDB = databaseName;
             }
@@ -423,7 +468,7 @@ namespace MySqlServer
                 byte[] authNameBytes = SubArray(loginRequestBytes, currentHead, packetLengthInt - currentHead);
                 string authPluginName = NulTerminatedString_bytesToString(authNameBytes);
                 currentHead += NulTerminatedString_stringLength(authNameBytes);
-                Console.WriteLine("auth plugin string bytes length {0} name: {1}", NulTerminatedString_stringLength(authNameBytes), authPluginName);
+                Log("auth plugin string bytes length {"+ NulTerminatedString_stringLength(authNameBytes) + "} name: {"+ authPluginName + "}");
             }
 
             // If have client connect attributs
@@ -456,7 +501,7 @@ namespace MySqlServer
             byte sequence = data[3];
             Array.Copy(data, packetLength, 3);
             int packetLengthInt = packetLength[0];
-            Console.WriteLine("sql packet length: {0}", packetLengthInt);
+            Log("sql packet length: "+ packetLengthInt);
 
             // Get text protocol
             byte[] queryPacket = SubArray(data, 4, packetLengthInt);
@@ -474,10 +519,16 @@ namespace MySqlServer
 
             if (textProtocol == 0x01) // COM_QUIT
             {
-                Log("disconnect");
-                Dispose();
+                Log("COM_QUIT disconnect");
                 SetState(Phase.Waiting);
+                DisconnectClient();
                 return;
+            }
+
+            if (textProtocol == 0x0e)
+            {
+                Log("COM_PING ping");
+                SendOkPacket();
             }
 
             Log("other command");
@@ -485,11 +536,11 @@ namespace MySqlServer
 
         private void HandleQuery(string query)
         {
-            Console.WriteLine("handle query: {0}", query);
+            LogBasic("handle query: {"+ query + "}");
             List<TSQLToken> tokens = TSQLTokenizer.ParseTokens(query);
             foreach (var token in tokens)
             {
-                Console.WriteLine("type: " + token.Type.ToString() + ", value: " + token.Text);
+                Log("type: " + token.Type.ToString() + ", value: " + token.Text);
             }
 
             Table returnTable = _DatabaseController.GetDatabase("dummy").GetTable("dummy");
@@ -512,20 +563,21 @@ namespace MySqlServer
             Column[] h = returnTable.Columns;
             Row[] r = returnTable.Rows;
 
-            Console.WriteLine("Query results:");
-            Console.WriteLine("Cols:");
-            foreach (var col in h)
-            {
-                Console.WriteLine("\tname: {0}, type: {1}", col.ColumnName, col._ColumnType);
-            }
-            Console.WriteLine("Rows:");
-            foreach (var row in r)
-            {
-                foreach (var v in row._Values)
-                {
-                    Console.WriteLine("\tvalue: " + v);
-                }
-            }
+
+            //Log("Query results:");
+            //Log("Cols:");
+            //foreach (var col in h)
+            //{
+            //    Log("\tname: {"+ col.ColumnName + "}, type: {"+ col._ColumnType + "}");
+            //}
+            //Log("Rows:");
+            //foreach (var row in r)
+            //{
+            //    foreach (var v in row._Values)
+            //    {
+            //        Log("\tvalue: " + v);
+            //    }
+            //}
 
             // send length encoded packet
             SendPacket(LengthEncodedInteger(h.Length));
@@ -671,23 +723,17 @@ namespace MySqlServer
                 byte b = (byte)(part1[i] ^ part2[i]);
                 if (b != inputPassword[i])
                 {
-                    Console.WriteLine("wrong password");
+                    Log("wrong password");
                     return false;
                 }
                 result[i] = b;
             }
 
-            Console.WriteLine("correct password");
-            //Console.WriteLine("correct {0}, come in {1}", ByteArrayToHexString(result), ByteArrayToHexString(inputPassword));
+            Log("correct password");
+            //Log("correct {0}, come in {1}", ByteArrayToHexString(result), ByteArrayToHexString(inputPassword));
 
             return true;
         }
-
-        private void Log(string msg)
-        {
-            if (Debug) Console.WriteLine(msg);
-        }
-
 
         #region Generic Response Packets
 
@@ -703,7 +749,7 @@ namespace MySqlServer
             ok.Add(0x00);
 
             SendPacket(ok.ToArray());
-            Console.WriteLine("send ok packet");
+            Log("send ok packet");
         }
 
         private void SendErrPacket(String message)
@@ -727,7 +773,7 @@ namespace MySqlServer
             bytes.AddRange(RestOfPacketString(message));
 
             SendPacket(bytes.ToArray());
-            Console.WriteLine("send err packet");
+            Log("send err packet");
         }
 
         private void SendEofPacket()
@@ -838,24 +884,24 @@ namespace MySqlServer
             // 8-byte integer
             if (bytes[0] == 0xfe)
             {
-                Console.WriteLine("8-byte int");
+                //Console.WriteLine("8-byte int");
                 return FixedLengthInteger_toInt(SubArray(bytes, 1, 8));
             }
             // 3-byte integer
             if (bytes[0] == 0xfd)
             {
-                Console.WriteLine("3-byte int");
+                //Console.WriteLine("3-byte int");
                 return FixedLengthInteger_toInt(SubArray(bytes, 1, 3));
             }
             // 2-byte integer
             if (bytes[0] == 0xfc)
             {
-                Console.WriteLine("2-byte int");
+                //Console.WriteLine("2-byte int");
                 return FixedLengthInteger_toInt(SubArray(bytes, 1, 2));
             }
 
             // 1-byte integer
-            Console.WriteLine("1-byte int");
+            //Console.WriteLine("1-byte int");
             return bytes[0];
         }
 
@@ -864,24 +910,24 @@ namespace MySqlServer
             // 8-byte integer
             if (bytes[0] == 0xfe)
             {
-                Console.WriteLine("8-byte int");
+                //Console.WriteLine("8-byte int");
                 return 8;
             }
             // 3-byte integer
             if (bytes[0] == 0xfd)
             {
-                Console.WriteLine("3-byte int");
+                //Console.WriteLine("3-byte int");
                 return 3;
             }
             // 2-byte integer
             if (bytes[0] == 0xfc)
             {
-                Console.WriteLine("2-byte int");
+                //Console.WriteLine("2-byte int");
                 return 2;
             }
 
             // 1-byte integer
-            Console.WriteLine("1-byte int");
+            //Console.WriteLine("1-byte int");
             return 1;
         }
 
@@ -1073,11 +1119,26 @@ namespace MySqlServer
             return pemString.Substring(start, end);
         }
 
-        public void PrintAllBytes(byte[] data)
+        public static void PrintAllBytes(byte[] data)
         {
             foreach (byte b in data)
             {
                 Console.WriteLine(Convert.ToString(b, 2).PadLeft(8, '0'));
+            }
+        }
+
+        public void LogBasic(string msg)
+        {
+            string timeStr = DateTime.Now.Minute.ToString() + '.' + DateTime.Now.Second.ToString() + '.' + DateTime.Now.Millisecond.ToString();
+            Console.WriteLine("[" + timeStr + "]" + "[" + _IpPort + "]" + msg);
+        }
+
+        public void Log(string msg)
+        {
+            if (Debug)
+            {
+                string timeStr = DateTime.Now.Minute.ToString() + '.' + DateTime.Now.Second.ToString() + '.' + DateTime.Now.Millisecond.ToString();
+                Console.WriteLine("[" + timeStr + "]" + "[" + _IpPort + "]" + msg);
             }
         }
 
