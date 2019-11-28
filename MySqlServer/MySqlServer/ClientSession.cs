@@ -15,7 +15,7 @@ using TSQL.Tokens;
 
 namespace MySqlServer
 {
-    public class ClientMetadata : IDisposable
+    public class ClientSession : IDisposable
     {
         #region Client Capability Flags
         // More capability flages in https://dev.mysql.com/doc/internals/en/capability-flags.html
@@ -123,7 +123,7 @@ namespace MySqlServer
 
         #region Constructors-and-Factories
 
-        public ClientMetadata(TcpClient tcp, Server server, DatabaseController db)
+        public ClientSession(TcpClient tcp, Server server, DatabaseController db)
         {
             if (tcp == null) throw new ArgumentNullException(nameof(tcp));
 
@@ -1130,7 +1130,7 @@ namespace MySqlServer
         public void LogBasic(string msg)
         {
             string timeStr = DateTime.Now.Minute.ToString() + '.' + DateTime.Now.Second.ToString() + '.' + DateTime.Now.Millisecond.ToString();
-            Console.WriteLine("[" + timeStr + "]" + "[" + _IpPort + "]" + msg);
+            Console.WriteLine("[client metadata][" + timeStr + "]" + "[" + _IpPort + "] " + msg);
         }
 
         public void Log(string msg)
@@ -1138,7 +1138,7 @@ namespace MySqlServer
             if (Debug)
             {
                 string timeStr = DateTime.Now.Minute.ToString() + '.' + DateTime.Now.Second.ToString() + '.' + DateTime.Now.Millisecond.ToString();
-                Console.WriteLine("[" + timeStr + "]" + "[" + _IpPort + "]" + msg);
+                Console.WriteLine("[client metadata][" + timeStr + "]" + "[" + _IpPort + "] " + msg);
             }
         }
 

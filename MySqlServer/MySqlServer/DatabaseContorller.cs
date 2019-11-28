@@ -34,7 +34,7 @@ namespace MySqlServer
             dummyDB.AddTable(dummyTable);
             dummyTable.AddColumns(new Column[]
             {
-                new Column("Col1", ClientMetadata.ColumnType.MYSQL_TYPE_LONGLONG),
+                new Column("Col1", ClientSession.ColumnType.MYSQL_TYPE_LONGLONG),
                 new Column("Col2")
             });
 
@@ -264,7 +264,7 @@ namespace MySqlServer
         {
             Table virtualTable = new Table("");
             virtualTable.AddColumn(
-                new Column("TIMEDIFF(NOW(), UTC_TIMESTAMP())", ClientMetadata.ColumnType.MYSQL_TYPE_TIME)
+                new Column("TIMEDIFF(NOW(), UTC_TIMESTAMP())", ClientSession.ColumnType.MYSQL_TYPE_TIME)
             );
             virtualTable.AddRow(
                 new Row(

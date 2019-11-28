@@ -21,61 +21,59 @@ namespace TestMultiClient
                 "pswd"
                 );
             server.Debug = true;
-            
-            Task.Run(() => server.StartAsync());
+
+            server.StartAsync();
+
+            Console.WriteLine("Start in 3 seconds");
 
             Thread.Sleep(3000);
 
             string connStr_NoSSL = "server=127.0.0.1;port=3306;uid=root;" +
-                "pwd=" + root_password + ";SslMode=None";
+                "pwd=" + root_password + ";SslMode=None;Connection Timeout=3000";
 
             string connStr_SSL = "server=127.0.0.1;port=3306;uid=root;" +
                 "pwd=" + root_password;
 
-            Log("Starting clients");
+            Log("Starting client tasks");
             for (int i = 0; i < clientThreads; i++)
             {
                 Log("Starting client " + i);
                 Task.Run(() => ClientTask(connStr_NoSSL));
-                Thread.Sleep(100);
             }
 
-            Console.WriteLine("Press ENTER to exit");
             Console.ReadLine();
         }
 
         private static void ClientTask(string connStr)
         {
-            string taskNum = DateTime.Now.Minute.ToString() + '.' + DateTime.Now.Second.ToString() + '.' + DateTime.Now.Millisecond.ToString();
-            Log("entering", taskNum);
-            MySqlConnection conn = new MySqlConnection(connStr);
-            
-            try
+            string timeStr = DateTime.Now.Minute.ToString() + '.' + DateTime.Now.Second.ToString() + '.' + DateTime.Now.Millisecond.ToString();
+            Log("entering", timeStr);
+            using (MySqlConnection conn = new MySqlConnection(connStr))
             {
-                Log("Connecting to MySQL...", taskNum);
-                conn.Open();
-                Log("connected", taskNum);
-                string sql = "SELECT * FROM dummy;";
-                MySqlCommand cmd = new MySqlCommand(sql, conn);
-                MySqlDataReader rdr = cmd.ExecuteReader();
-
-                while (rdr.Read())
+                try
                 {
-                    Log(rdr[0] + " -- " + rdr[1], taskNum);
+                    Log("Connecting to MySQL...", timeStr);
+                    conn.Open();
+                    Log("connected", timeStr);
+                    string sql = "SELECT * FROM dummy;";
+                    MySqlCommand cmd = new MySqlCommand(sql, conn);
+                    MySqlDataReader rdr = cmd.ExecuteReader();
+
+                    while (rdr.Read())
+                    {
+                        Log(rdr[0] + " -- " + rdr[1], timeStr);
+                    }
+                    rdr.Close();
                 }
-                rdr.Close();
-            }
-            catch (Exception ex)
-            {
-                Log("error", taskNum);
-                Log(ex.ToString(), taskNum);
+                catch (Exception ex)
+                {
+                    Log(ex.ToString(), timeStr);
+                }
+                conn.Close();
+
             }
 
-            conn.Close();
-            Log("Done.", taskNum);
-            
-
-            Log("finished", taskNum);
+            Log("task finished", timeStr);
         }
 
         private static void Log(string msg, string number)

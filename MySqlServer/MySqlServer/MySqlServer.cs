@@ -101,7 +101,7 @@ namespace MySqlServer
         private string _CertPassword;
 
         private ConcurrentDictionary<string, DateTime> _UnauthenticatedClients = new ConcurrentDictionary<string, DateTime>();
-        private ConcurrentDictionary<string, ClientMetadata> _Clients = new ConcurrentDictionary<string, ClientMetadata>();
+        private ConcurrentDictionary<string, ClientSession> _Clients = new ConcurrentDictionary<string, ClientSession>();
         private ConcurrentDictionary<string, DateTime> _ClientsLastSeen = new ConcurrentDictionary<string, DateTime>();
         private ConcurrentDictionary<string, DateTime> _ClientsKicked = new ConcurrentDictionary<string, DateTime>();
         private ConcurrentDictionary<string, DateTime> _ClientsTimedout = new ConcurrentDictionary<string, DateTime>();
@@ -151,7 +151,7 @@ namespace MySqlServer
                     Log("Waiting connection ... ");
                     // Setup client
                     TcpClient tcpClient = _Listener.AcceptTcpClient();
-                    ClientMetadata client = new ClientMetadata(tcpClient, this, _DatabaseController);
+                    ClientSession client = new ClientSession(tcpClient, this, _DatabaseController);
                     client.Debug = Debug;
 
                     client.ClientConnected();
@@ -188,9 +188,16 @@ namespace MySqlServer
             _Listener = new TcpListener(_IPAddress, _ListenerPort);
             _Listener.Start();
 
-            _Clients = new ConcurrentDictionary<string, ClientMetadata>();
+            _Clients = new ConcurrentDictionary<string, ClientSession>();
 
             Task.Run(() => AcceptConnections(), _Token);
+        }
+
+        public void Start()
+        {
+            Log("server starting on " + _ListenerIp + ":" + _ListenerPort);
+            _Listener = new TcpListener(_IPAddress, _ListenerPort);
+            _Listener.Start();
         }
 
         #endregion
@@ -199,19 +206,19 @@ namespace MySqlServer
 
         private async Task ClientConnected(string ipPort)
         {
-            Log("[" + ipPort + "] client connected");
+            Log("[" + ipPort + "] client connected function");
             _Clients[ipPort].ClientConnected();
         }
 
         private async Task DataReceived(string ipPort, byte[] data)
         {
-            Log("[" + ipPort + "]data received");
+            Log("[" + ipPort + "] data received function");
             _Clients[ipPort].DataReceived(data);
         }
 
         private async Task ClientDisconnected(string ipPort, DisconnectReason reason)
         {
-            Log("[" + ipPort + "] client disconnected: " + reason.ToString());
+            Log("[" + ipPort + "] client disconnected function: " + reason.ToString());
             _Clients[ipPort].ClientDisconnected();
         }
 
@@ -223,7 +230,7 @@ namespace MySqlServer
         {
             if (String.IsNullOrEmpty(ipPort)) throw new ArgumentNullException(nameof(ipPort));
 
-            if (!_Clients.TryGetValue(ipPort, out ClientMetadata client))
+            if (!_Clients.TryGetValue(ipPort, out ClientSession client))
             {
                 Log("*** DisconnectClient unable to find client " + ipPort);
             }
@@ -235,7 +242,7 @@ namespace MySqlServer
                     _ClientsKicked.TryAdd(ipPort, DateTime.Now);
                 }
 
-                _Clients.TryRemove(client.IpPort, out ClientMetadata destroyed);
+                _Clients.TryRemove(client.IpPort, out ClientSession destroyed);
                 client.Dispose();
                 Log("[" + ipPort + "] disposed");
             }
@@ -243,24 +250,29 @@ namespace MySqlServer
 
         #region Tcp connection part
 
-        private async void AcceptConnections()
+        private async Task AcceptConnections()
         {
-            while (!_Token.IsCancellationRequested)
+            
+            while (true)
             {
-                ClientMetadata client = null;
+                
+                ClientSession client = null;
 
                 try
                 {
+                    Log("[] before AcceptTcpClientAsync");
                     TcpClient tcpClient = await _Listener.AcceptTcpClientAsync();
+                    //TcpClient tcpClient = _Listener.AcceptTcpClient();
+                    Log("[] after AcceptTcpClientAsync");
                     string clientIp = tcpClient.Client.RemoteEndPoint.ToString();
 
-                    client = new ClientMetadata(tcpClient, this, _DatabaseController);
+                    Log("[" + clientIp + "] starting data receiver");
+
+                    client = new ClientSession(tcpClient, this, _DatabaseController);
                     client.Debug = Debug;
 
                     _Clients.TryAdd(clientIp, client);
                     _ClientsLastSeen.TryAdd(clientIp, DateTime.Now);
-
-                    Log( "[" + clientIp + "] starting data receiver");
 
                     await Task.Run(() => ClientConnected(clientIp));
 
@@ -288,7 +300,7 @@ namespace MySqlServer
         }
 
 
-        private async Task DataReceiver(ClientMetadata client)
+        private async Task DataReceiver(ClientSession client)
         {
             string header = "[" + client.IpPort + "]";
             Log(header + " data receiver started");
@@ -318,7 +330,6 @@ namespace MySqlServer
                     }
 
                     unawaited = Task.Run(() => DataReceived(client.IpPort, data));
-                    
                 }
                 catch (Exception e)
                 {
@@ -352,7 +363,7 @@ namespace MySqlServer
             
 
             DateTime removedTs;
-            _Clients.TryRemove(client.IpPort, out ClientMetadata destroyed);
+            _Clients.TryRemove(client.IpPort, out ClientSession destroyed);
             _ClientsLastSeen.TryRemove(client.IpPort, out removedTs);
             _ClientsKicked.TryRemove(client.IpPort, out removedTs);
             _ClientsTimedout.TryRemove(client.IpPort, out removedTs);
@@ -360,7 +371,7 @@ namespace MySqlServer
             client.Dispose();
         }
 
-        private async Task<byte[]> DataReadAsync(ClientMetadata client)
+        private async Task<byte[]> DataReadAsync(ClientSession client)
         {
             if (client.Token.IsCancellationRequested) throw new OperationCanceledException();
             if (!client.NetworkStream.CanRead) return null;

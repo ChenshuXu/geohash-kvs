@@ -8,17 +8,24 @@ or
 By default it will use ssl connection.
 
 Try `mysql> SELECT * FROM dummy;` will returns
+
 `+------+------+`
+
 `| Col1 | Col2 |`
+
 `+------+------+`
+
 `|    1 | ok   |`
+
 `|    2 | A    |`
+
 `+------+------+`
+
 `2 rows in set, 28416 warnings (0.00 sec)`
 
 
 
-### Certificate Instructions
+## Certificate Instructions
 
 Create certificate with OpenSSL: [https://dev.mysql.com/doc/refman/8.0/en/creating-ssl-files-using-openssl.html](https://dev.mysql.com/doc/refman/8.0/en/creating-ssl-files-using-openssl.html)
 
