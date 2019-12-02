@@ -19,21 +19,49 @@ namespace MySqlServer
     {
         #region Client Capability Flags
         // More capability flages in https://dev.mysql.com/doc/internals/en/capability-flags.html
+        static uint CLIENT_LONG_PASSWORD = 0x00000001;
         static uint CLIENT_FOUND_ROWS = 0x00000002;
+        static uint CLIENT_LONG_FLAG = 0x00000004;
         static uint CLIENT_CONNECT_WITH_DB = 0x00000008;
+        static uint CLIENT_NO_SCHEMA = 0x00000010;
+        static uint CLIENT_COMPRESS = 0x00000020;
+
+        static uint CLIENT_LOCAL_FILES = 0x00000080;
+        static uint CLIENT_IGNORE_SPACE = 0x00000100;
+        static uint CLIENT_PROTOCOL_41 = 0x00000200;
+        static uint CLIENT_INTERACTIVE = 0x00000400;
+        static uint CLIENT_SSL = 0x00000800;
+
+        static uint CLIENT_TRANSACTIONS = 0x00002000;
         static uint CLIENT_SECURE_CONNECTION = 0x00008000;
-        static uint CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA = 0x00200000;
+        static uint CLIENT_MULTI_STATEMENTS = 0x00010000;
+        static uint CLIENT_MULTI_RESULTS = 0x00020000;
+
         static uint CLIENT_PLUGIN_AUTH = 0x00080000;
         static uint CLIENT_CONNECT_ATTRS = 0x00100000;
-        static uint CLIENT_SSL = 0x00000800;
-        static uint CLIENT_PROTOCOL_41 = 0x00000200;
+        static uint CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA = 0x00200000;
+        
         static uint CLIENT_SESSION_TRACK = 0x00800000;
         static uint CLIENT_DEPRECATE_EOF = 0x01000000;
+        
         #endregion
 
         #region Server Status Flags
         // More server flags in https://dev.mysql.com/doc/internals/en/status-flags.html
+        static uint SERVER_STATUS_IN_TRANS = 0x0001; //	a transaction is active
+        static uint SERVER_STATUS_AUTOCOMMIT = 0x0002; // auto-commit is enabled
         static uint SERVER_MORE_RESULTS_EXISTS = 0x0008;
+        static uint SERVER_STATUS_NO_GOOD_INDEX_USED = 0x0010;
+        static uint SERVER_STATUS_NO_INDEX_USED = 0x0020;
+        static uint SERVER_STATUS_CURSOR_EXISTS = 0x0040; // Used by Binary Protocol Resultset to signal that COM_STMT_FETCH must be used to fetch the row-data.
+        static uint SERVER_STATUS_LAST_ROW_SENT = 0x0080;
+        static uint SERVER_STATUS_DB_DROPPED = 0x0100;
+        static uint SERVER_STATUS_NO_BACKSLASH_ESCAPES = 0x0200;
+        static uint SERVER_STATUS_METADATA_CHANGED = 0x0400;
+        static uint SERVER_QUERY_WAS_SLOW = 0x0800;
+        static uint SERVER_PS_OUT_PARAMS = 0x1000;
+        static uint SERVER_STATUS_IN_TRANS_READONLY = 0x2000; // in a read-only transaction
+        static uint SERVER_SESSION_STATE_CHANGED = 0x4000; // connection state information has changed
         #endregion
 
         #region Column type
@@ -82,7 +110,7 @@ namespace MySqlServer
         public string ConnectedDatabase
         {
             get { return _ConnectedDB; }
-            set { _ConnectedDB = value; }
+            set { UseDatabase(value); }
         }
 
         public CancellationTokenSource TokenSource { get; set; }
@@ -100,7 +128,7 @@ namespace MySqlServer
         private X509Certificate2Collection _SslCertificateCollection = null;
 
         // tcp connection related members
-        private int _ReceiveBufferSize = 4096;
+        public int _ReceiveBufferSize = 4096;
         private TcpClient _TcpClient = null;
         private NetworkStream _NetworkStream = null;
         private SslStream _SslStream = null;
@@ -109,13 +137,20 @@ namespace MySqlServer
 
         // mysql server related members
         private uint _ClientCapabilities;
-        private string _ConnectedDB;
+        private uint _ServerStatus = 0x0200;
+        private byte[] ServerStatus {
+            get { return BitConverter.GetBytes(_ServerStatus); }
+        }
+        private string _ConnectedDB = "dummy";
         private DatabaseController _DatabaseController;
-        public enum Phase { Waiting, ConnectionPhase, CommandPhase };
+        public enum Phase { Waiting, ConnectionPhase, CommandPhase, WaitingDataPhase };
         public Phase _ServerPhase = Phase.Waiting;
         private int _Sequence = 0;
         private byte[] _Salt1; // 8 bytes
         private byte[] _Salt2; // 12 bytes
+
+        private List<byte> _FileBuffer = new List<byte>();
+        private string _FileStringBuffer;
 
         public bool Debug = false;
 
@@ -136,60 +171,83 @@ namespace MySqlServer
             _DatabaseController = db;
             _ServerPhase = Phase.Waiting;
         }
+
+        public ClientSession()
+        {
+        }
         #endregion
 
         #region Public-Methods
 
         public void ClientConnected()
         {
-            LogBasic("start handshake");
-            SetState(Phase.ConnectionPhase);
-            HandleHandshake();
-
-            byte[] buffer = new byte[_ReceiveBufferSize];
-            _NetworkStream.Read(buffer);
-            HandleHandshakeResponse(buffer);
-
-            if (_UseSsl)
+            try
             {
-                Log("use ssl");
-                _SslCertificate = new X509Certificate2(_Server.CertFilename, _Server.CertPassword);
+                LogBasic("start handshake");
+                SetState(Phase.ConnectionPhase);
+                HandleHandshake();
 
-                _SslCertificateCollection = new X509Certificate2Collection { _SslCertificate };
+                byte[] buffer = new byte[_ReceiveBufferSize];
+                _NetworkStream.Read(buffer);
+                HandleHandshakeResponse(buffer);
 
-                if (_Server.AcceptInvalidCertificates)
+                if (_UseSsl)
                 {
-                    _SslStream = new SslStream(_NetworkStream, false, new RemoteCertificateValidationCallback(AcceptCertificate));
-                }
-                else
-                {
-                    _SslStream = new SslStream(_NetworkStream, false);
-                }
+                    Log("use ssl");
+                    _SslCertificate = new X509Certificate2(_Server.CertFilename, _Server.CertPassword);
 
-                bool success = StartTls();
+                    _SslCertificateCollection = new X509Certificate2Collection { _SslCertificate };
 
-                if (!success)
-                {
-                    Dispose();
+                    if (_Server.AcceptInvalidCertificates)
+                    {
+                        _SslStream = new SslStream(_NetworkStream, false, new RemoteCertificateValidationCallback(AcceptCertificate));
+                    }
+                    else
+                    {
+                        _SslStream = new SslStream(_NetworkStream, false);
+                    }
+
+                    bool success = StartTls();
+
+                    if (!success)
+                    {
+                        Dispose();
+                    }
+                    else
+                    {
+                        Log("start tls success");
+                    }
                 }
-                else
-                {
-                    Log("start tls success");
-                }
+            }
+            catch (Exception ex)
+            {
+                SendErrPacket(ex.ToString());
             }
         }
 
         public void DataReceived(byte[] data)
         {
-            if (_ServerPhase == Phase.ConnectionPhase)
+            Log("DataReceived: "+data.Length);
+            try
             {
-                Log("handshake after start tls");
-                HandleHandshakeResponse(data);
+                switch (_ServerPhase)
+                {
+                    case Phase.ConnectionPhase:
+                        Log("handshake after start tls");
+                        HandleHandshakeResponse(data);
+                        break;
+                    case Phase.CommandPhase:
+                        _Sequence = 0;
+                        HandleCommand(data);
+                        break;
+                    case Phase.WaitingDataPhase:
+                        _FileBuffer.AddRange(data);
+                        break;
+                }
             }
-            else if (_ServerPhase == Phase.CommandPhase)
+            catch (Exception ex)
             {
-                _Sequence = 0;
-                HandleCommand(data);
+                SendErrPacket(ex.ToString());
             }
         }
 
@@ -287,11 +345,21 @@ namespace MySqlServer
                 // exit command phase
                 case Phase.CommandPhase:
                     break;
+                // exit waiting data phase
+                case Phase.WaitingDataPhase:
+                    HandleDataLoadResponse();
+                    break;
             }
 
             _ServerPhase = phase;
 
             // enter state
+            switch (_ServerPhase)
+            {
+                case Phase.WaitingDataPhase:
+                    Task.Run(() => RunDataLoad());
+                    break;
+            }
         }
 
         /// <summary>
@@ -306,7 +374,7 @@ namespace MySqlServer
             // server version
             byte[] server_version = NulTerminatedString("5.7.28");
             packet.AddRange(server_version);
-            // 4 bytes connection id
+            // 4 bytes connection id TODO: send random number
             byte[] connection_id = BitConverter.GetBytes(30);
             packet.AddRange(connection_id); // thread id
 
@@ -382,8 +450,10 @@ namespace MySqlServer
             uint clientCapabilities = BitConverter.ToUInt32(clientCapabilitiesBytes, 0);
             _ClientCapabilities = clientCapabilities;
 
-            // max-packet size
-            byte[] maxPacketSize = SubArray(loginRequestBytes, currentHead, 4);
+            // max-packet size, max size of a command packet that the client wants to send to the server
+            byte[] maxPacketSize = SubArray(loginRequestBytes, currentHead, 3);
+            _ReceiveBufferSize = FixedLengthInteger_toInt(maxPacketSize);
+            Log("maxPacketSize: " + FixedLengthInteger_toInt(maxPacketSize));
             currentHead += 4;
 
             // character set
@@ -456,9 +526,8 @@ namespace MySqlServer
                 byte[] databaseNameBytes = SubArray(loginRequestBytes, currentHead, packetLengthInt - currentHead);
                 string databaseName = NulTerminatedString_bytesToString(databaseNameBytes);
                 currentHead += NulTerminatedString_stringLength(databaseNameBytes);
-                Log("database string bytes length {"+ NulTerminatedString_stringLength(databaseNameBytes) + "} name: {"+ databaseName + "}");
-                // TODO: set connected database name, handle error if database not exist
-                _ConnectedDB = databaseName;
+                Log("database name: {"+ databaseName + "}");
+                UseDatabase(databaseName);
             }
 
             // If has auth plugin name
@@ -468,7 +537,7 @@ namespace MySqlServer
                 byte[] authNameBytes = SubArray(loginRequestBytes, currentHead, packetLengthInt - currentHead);
                 string authPluginName = NulTerminatedString_bytesToString(authNameBytes);
                 currentHead += NulTerminatedString_stringLength(authNameBytes);
-                Log("auth plugin string bytes length {"+ NulTerminatedString_stringLength(authNameBytes) + "} name: {"+ authPluginName + "}");
+                Log("auth plugin name: {"+ authPluginName + "}");
             }
 
             // If have client connect attributs
@@ -507,78 +576,90 @@ namespace MySqlServer
             byte[] queryPacket = SubArray(data, 4, packetLengthInt);
             byte textProtocol = queryPacket[0];
 
-            if (textProtocol == 0x03) // COM_QUERY
+            switch (textProtocol) 
             {
-                Log("get COM_QUERY");
-                GetSequence();
-                byte[] queryBytes = SubArray(queryPacket, 1, packetLengthInt - 1);
-                string queryString = Encoding.ASCII.GetString(queryBytes, 0, queryBytes.Length);
-                HandleQuery(queryString);
-                return;
+                // COM_QUIT
+                case 0x01:
+                    Log("COM_QUIT disconnect");
+                    SetState(Phase.Waiting);
+                    DisconnectClient();
+                    return;
+
+                // COM_INIT_DB
+                case 0x02:
+                    Log("COM_INIT_DB use database");
+                    // string[EOF]
+                    byte[] dbBytes = SubArray(queryPacket, 1, packetLengthInt - 1);
+                    string dbString = Encoding.ASCII.GetString(dbBytes, 0, dbBytes.Length);
+                    Log(dbString);
+                    UseDatabase(dbString);
+                    SendOkPacket();
+                    return;
+
+                // COM_QUERY
+                case 0x03:
+                    Log("get COM_QUERY");
+                    // string[EOF]
+                    GetSequence();
+                    byte[] queryBytes = SubArray(queryPacket, 1, packetLengthInt - 1);
+                    string queryString = Encoding.ASCII.GetString(queryBytes, 0, queryBytes.Length);
+                    HandleQuery(queryString);
+                    return;
+
+                // COM_PING
+                case 0x0e:
+                    Log("COM_PING ping");
+                    SendOkPacket();
+                    return;
             }
 
-            if (textProtocol == 0x01) // COM_QUIT
-            {
-                Log("COM_QUIT disconnect");
-                SetState(Phase.Waiting);
-                DisconnectClient();
-                return;
-            }
-
-            if (textProtocol == 0x0e)
-            {
-                Log("COM_PING ping");
-                SendOkPacket();
-            }
-
-            Log("other command");
+            Log("other command: " + textProtocol);
+            throw new Exception("other command not implemented: " + textProtocol);
         }
 
         private void HandleQuery(string query)
         {
-            LogBasic("handle query: {"+ query + "}");
+            LogBasic("handle query: {" + query + "}");
             List<TSQLToken> tokens = TSQLTokenizer.ParseTokens(query);
-            foreach (var token in tokens)
-            {
-                Log("type: " + token.Type.ToString() + ", value: " + token.Text);
-            }
 
             Table returnTable = _DatabaseController.GetDatabase("dummy").GetTable("dummy");
 
-            if (tokens[0].Text.ToLower() == "select")
+            switch (tokens[0].Text.ToLower())
             {
-                returnTable = _DatabaseController.Select(tokens);
-            }
-            else if (tokens[0].Text.ToLower() == "show")
-            {
-                returnTable = _DatabaseController.Show(tokens);
-            }
-            else if (tokens[0].Text.ToLower() == "set")
-            {
-                _DatabaseController.Set(tokens);
-                SendOkPacket();
-                return;
+                case "select":
+                    returnTable = Select(tokens);
+                    break;
+                case "show":
+                    returnTable = Show(tokens);
+                    break;
+                case "set":
+                    _DatabaseController.Set(tokens);
+                    SendOkPacket();
+                    return;
+                case "load":
+                    LoadData(tokens);
+                    return;
             }
 
             Column[] h = returnTable.Columns;
             Row[] r = returnTable.Rows;
 
-
-            //Log("Query results:");
-            //Log("Cols:");
-            //foreach (var col in h)
-            //{
-            //    Log("\tname: {"+ col.ColumnName + "}, type: {"+ col._ColumnType + "}");
-            //}
-            //Log("Rows:");
-            //foreach (var row in r)
-            //{
-            //    foreach (var v in row._Values)
-            //    {
-            //        Log("\tvalue: " + v);
-            //    }
-            //}
-
+            /*
+            Log("Query results:");
+            Log("Cols:");
+            foreach (var col in h)
+            {
+                Log("\tname: {" + col.ColumnName + "}, type: {" + col._ColumnType + "}");
+            }
+            Log("Rows:");
+            foreach (var row in r)
+            {
+                foreach (var v in row._Values)
+                {
+                    Log("\tvalue: " + v);
+                }
+            }
+            */
             // send length encoded packet
             SendPacket(LengthEncodedInteger(h.Length));
 
@@ -605,150 +686,367 @@ namespace MySqlServer
             return;
         }
 
-        private void SendColumnDefinition(Column[] columns)
+        /// <summary>
+        /// Handle query with TIMEDIFF funtion
+        /// </summary>
+        /// <param name="tokens"></param>
+        /// <returns>a table object that contains diff information</returns>
+        private Table HandleTimediff(List<TSQLToken> tokens)
         {
-            for (var i = 0; i < columns.Length; i++)
-            {
-                Column column = columns[i];
-                List<byte> packet = new List<byte>();
+            Table virtualTable = new Table("");
+            virtualTable.AddColumn(
+                new Column("TIMEDIFF(NOW(), UTC_TIMESTAMP())", ClientSession.ColumnType.MYSQL_TYPE_TIME)
+            );
+            virtualTable.AddRow(
+                new Row(
+                    new Object[] { "08:00:00" }
+                )
+            );
 
-                int character_set = 33; // utf8_general_ci
-                int max_col_length = 1024; //This is totally made up.  it shouldn't be
-                byte column_type = (byte)column._ColumnType;
-
-                packet.AddRange(LengthEncodedString("def")); // catalog
-                packet.AddRange(LengthEncodedString(column.ColumnName)); // schema-name
-                packet.AddRange(LengthEncodedString(column.TableName)); // virtual
-                packet.AddRange(LengthEncodedString(column.TableName)); // physical table-name
-                packet.AddRange(LengthEncodedString(column.ColumnName)); // virtual column name
-                packet.AddRange(LengthEncodedString(column.ColumnName)); // physical column name
-                packet.Add(0x0c); // length of the following fields (always 0x0c)
-                packet.AddRange(FixedLengthInteger(character_set, 2)); // character_set is the column character set and is defined in Protocol::CharacterSet.
-                packet.AddRange(FixedLengthInteger(max_col_length, 4)); // maximum length of the field
-                packet.AddRange(FixedLengthInteger(column_type, 1)); // column_type, type of the column as defined in Column Type
-
-                // flags
-                packet.Add(0x00);
-                packet.Add(0x00);
-
-                // decimals, max shown decimal digits
-                packet.Add(0x00); // 0x00 for integers and static strings
-                                  // 0x1f for dynamic strings, double, float
-                                  // 0x00 to 0x51 for decimals
-
-                packet.Add(0x00); //Filler
-                packet.Add(0x00);
-
-                SendPacket(packet.ToArray());
-            }
+            return virtualTable;
         }
-
-
-        private void SendTextResultsetRow(Row[] rows)
-        {
-            for (var i = 0; i < rows.Length; i++)
-            {
-                Row row = rows[i];
-                List<byte> packet = new List<byte>();
-
-                for (var j = 0; j < row._Values.Length; j++)
-                {
-                    packet.AddRange(LengthEncodedString(row._Values[j].ToString()));
-                }
-                SendPacket(packet.ToArray());
-            }
-        }
-
-        private int GetSequence()
-        {
-            int val = _Sequence;
-            _Sequence += 1;
-            if (_Sequence > 255)
-            {
-                _Sequence = 0;
-            }
-            return val;
-        }
-
-        private void GenerateSalt1()
-        {
-            _Salt1 = GetSalt(8);
-        }
-
-        private void GenerateSalt2()
-        {
-            _Salt2 = GetSalt(12);
-        }
-
-        private static byte[] GetSalt(int maximumSaltLength)
-        {
-            var salt = new byte[maximumSaltLength];
-            using (var random = new RNGCryptoServiceProvider())
-            {
-                random.GetNonZeroBytes(salt);
-            }
-
-            return salt;
-        }
-
 
         /// <summary>
-        /// Verify 20-byte-password with real password
+        /// Handle select query
         /// </summary>
-        /// <param name="inputPassword">20-byte-long input password</param>
-        /// <param name="userPassword">user password</param>
-        /// <returns></returns>
-        private bool VerifyPassword(byte[] inputPassword, byte[] userPassword)
+        /// <param name="tokens">query tokens</param>
+        /// <returns>a table object that contains result column information and row information</returns>
+        private Table Select(List<TSQLToken> tokens)
         {
-            if (inputPassword.Length != 20)
+            // select clause
+            // get output columns
+            PopAndCheck(ref tokens, "select");
+            Log("SELECT:");
+
+            // handle select TIMEDIFF
+            if (tokens[0].Text == "TIMEDIFF")
             {
-                return false;
+                Log("TIMEDIFF:");
+                return HandleTimediff(tokens);
             }
-            // password is calculated by
-            // SHA1( password ) XOR SHA1( "20-bytes random data from server" <concat> SHA1( SHA1( password ) ) )
-            byte[] salt = ConcatArrays(_Salt1, _Salt2);
-            SHA1 sha1Hash = SHA1.Create();
 
-            // part 1
-            byte[] part1 = sha1Hash.ComputeHash(userPassword);
+            bool readingVariable = false;
+            List<Column> outPutColumns = new List<Column>();
 
-            // part 2
-            byte[] partBytes = ConcatArrays(salt, sha1Hash.ComputeHash(part1));
-            byte[] part2 = sha1Hash.ComputeHash(partBytes);
-
-            // XOR
-            byte[] result = new byte[20];
-            for (var i = 0; i < 20; i++)
+            while (true)
             {
-                byte b = (byte)(part1[i] ^ part2[i]);
-                if (b != inputPassword[i])
+                Column qualifiedColumnName = GetQualifiedColumnName(ref tokens);
+                outPutColumns.Add(qualifiedColumnName);
+                Log("\ttable name: {" + qualifiedColumnName.TableName + "}, column name: {" + qualifiedColumnName.ColumnName + "}");
+                // Handle veriable tokens
+                if (qualifiedColumnName._TokenType == TSQLTokenType.Variable)
                 {
-                    Log("wrong password");
-                    return false;
+                    readingVariable = true;
                 }
-                result[i] = b;
+
+                if (tokens.Count == 0)
+                {
+                    break;
+                }
+
+                TSQLToken nextToken = tokens[0];
+                if (nextToken.Text.ToLower() == "from" || nextToken.Text.ToLower() == "limit")
+                {
+                    break;
+                }
+
+                if (!readingVariable && nextToken.Text != ",")
+                {
+                    throw new Exception("should be ,");
+                }
+                // check ,
+                if (nextToken.Text == ",")
+                {
+                    tokens.RemoveAt(0);
+                    continue;
+                }
             }
 
-            Log("correct password");
-            //Log("correct {0}, come in {1}", ByteArrayToHexString(result), ByteArrayToHexString(inputPassword));
+            // from clause
+            // get from table name
+            Table fromTable = _DatabaseController.InformationSchema.GetTable("information schema"); // default is info schema
+            // when reading system variable, don't have from table clause
+            if (!readingVariable)
+            {
+                PopAndCheck(ref tokens, "from");
+                Log("FROM:");
+                Table tableNameObj = GetQualifiedTableName(ref tokens);
+                // TODO: from database
+                fromTable = _DatabaseController.GetDatabase(tableNameObj.DatabaseName).GetTable(tableNameObj.TableName); // TODO: throw error when table name not exist
+                Log("\tdb name: {" + fromTable.DatabaseName + "}, table name: {" + fromTable.TableName + "}");
+                // TODO: throw error when have join keyword,
+                // only support from one table,
+                // only support table from dummy database
 
-            return true;
+
+            }
+
+            // TODO: remaining clause
+            Log("remaining tokens:");
+            foreach (var token in tokens)
+            {
+                Log("\ttype: " + token.Type.ToString() + ", value: " + token.Text);
+            }
+
+            Log("QUERY after processed");
+            foreach (var col in outPutColumns)
+            {
+                Log("\ttable name: {" + col.TableName + "}, column name: {" + col.ColumnName + "}");
+            }
+            Log("\tfrom table info, db name: {" + fromTable.DatabaseName + "}, table name: {" + fromTable.TableName + "}");
+
+
+            // TODO: add column information to virtual table
+            return fromTable.SelectRows(outPutColumns.ToArray());
+        }
+
+        /// <summary>
+        /// Handle show query
+        /// </summary>
+        /// <param name="tokens"></param>
+        /// <returns>table object that contains query result, ready to send to client</returns>
+        private Table Show(List<TSQLToken> tokens)
+        {
+            Table virtualTable = new Table("");
+            PopAndCheck(ref tokens, "show");
+
+            switch (tokens[0].Text.ToLower())
+            {
+                case "collation":
+                    return _DatabaseController.InformationSchema.GetTable("COLLATIONS");
+                case "databases":
+                    break;
+                case "tables":
+                    break;
+            }
+
+            throw new Exception("show query not support");
+        }
+
+        /// <summary>
+        /// Handle load data query
+        /// </summary>
+        /// <param name="tokens">query tokens</param>
+        private void LoadData(List<TSQLToken> tokens)
+        {
+            PopAndCheck(ref tokens, "load");
+            PopAndCheck(ref tokens, "data");
+            if (tokens[0].Text.ToLower() == "local")
+            {
+                PopAndCheck(ref tokens, "local");
+            }
+            PopAndCheck(ref tokens, "infile");
+            string fileName = tokens[0].Text.ToLower();
+            fileName = fileName[1..^1];
+            Log(fileName);
+            tokens.RemoveAt(0);
+
+            PopAndCheck(ref tokens, "into");
+            PopAndCheck(ref tokens, "table");
+
+            string tableName = tokens[0].Text.ToLower();
+            Log(tableName);
+            tokens.RemoveAt(0);
+
+            string fields_terminated_by = "\t";
+            string fields_enclosed_by = "";
+            string fields_escaped_by = "\\";
+
+            string lines_starting_by = "";
+            string lines_terminated_by = "\n";
+
+            // can handle different orders of the keywords
+            string first = GetFirst(tokens).ToLower();
+            while (first == "fields" || first == "columns" || first == "lines")
+            {
+                if (first == "fields" || first == "columns")
+                {
+                    tokens.RemoveAt(0);
+
+                    first = GetFirst(tokens).ToLower();
+                    while (first == "terminated" || first == "enclosed" || first == "escaped")
+                    {
+                        switch (first)
+                        {
+                            case "terminated":
+                                PopAndCheck(ref tokens, "terminated");
+                                PopAndCheck(ref tokens, "by");
+
+                                fields_terminated_by = tokens[0].Text[1..^1];
+                                tokens.RemoveAt(0);
+                                break;
+                            case "enclosed":
+                                PopAndCheck(ref tokens, "enclosed");
+                                PopAndCheck(ref tokens, "by");
+
+                                fields_enclosed_by = tokens[0].Text[1..^1];
+                                tokens.RemoveAt(0);
+                                break;
+                            case "escaped":
+                                PopAndCheck(ref tokens, "escaped");
+                                PopAndCheck(ref tokens, "by");
+
+                                fields_escaped_by = tokens[0].Text[1..^1];
+                                tokens.RemoveAt(0);
+                                break;
+                        }
+
+                        first = GetFirst(tokens).ToLower();
+                    }
+                }
+                else if (first == "lines")
+                {
+                    PopAndCheck(ref tokens, "lines");
+
+                    first = GetFirst(tokens).ToLower();
+                    while (first == "starting" || first == "terminated")
+                    {
+                        switch (first)
+                        {
+                            case "starting":
+                                PopAndCheck(ref tokens, "starting");
+                                PopAndCheck(ref tokens, "by");
+
+                                lines_starting_by = tokens[0].Text[1..^1];
+                                tokens.RemoveAt(0);
+                                break;
+                            case "terminated":
+                                PopAndCheck(ref tokens, "terminated");
+                                PopAndCheck(ref tokens, "by");
+
+                                lines_terminated_by = tokens[0].Text[1..^1];
+                                tokens.RemoveAt(0);
+                                break;
+                        }
+                        first = GetFirst(tokens).ToLower();
+                    }
+                }
+
+                first = GetFirst(tokens).ToLower();
+            }
+
+            Log(string.Format("FIELDS TERMINATED BY '{0}' ENCLOSED BY '{1}' ESCAPED BY '{2}' LINES TERMINATED BY '{3}' STARTING BY '{4}'",
+                    fields_terminated_by,
+                    fields_enclosed_by,
+                    fields_escaped_by,
+                    lines_terminated_by,
+                    lines_starting_by));
+
+            Log("remaining tokens:");
+            foreach (var token in tokens)
+            {
+                Log("\ttype: " + token.Type.ToString() + ", value: " + token.Text);
+            }
+
+            // LOCAL INFILE request packet, send file name
+            List<byte> fileNamePacket = new List<byte>();
+            fileNamePacket.Add(0xfb); // [fb] LOCAL INFILE
+            fileNamePacket.AddRange(RestOfPacketString(fileName));
+            SendPacket(fileNamePacket.ToArray());
+
+            // Start receive file
+            SetState(Phase.WaitingDataPhase);
+        }
+
+        private async Task RunDataLoad()
+        {
+            while(true)
+            {
+                // get last possible packet
+                byte[] possibleLastPacket = _FileBuffer.Skip(Math.Max(0, _FileBuffer.Count() - 4)).ToArray();
+                byte[] packetLengthBytes = SubArray(possibleLastPacket, 0, 3);
+                int packetLength = FixedLengthInteger_toInt(packetLengthBytes);
+                byte sequence = possibleLastPacket[3];
+
+                if (packetLength == 0)
+                {
+                    Log("last packet sequence: " + FixedLengthInteger_toInt(new byte[] { sequence }));
+                    SetState(Phase.CommandPhase);
+                    break;
+                }
+
+                await Task.Delay(50);
+            }
+        }
+
+        /// <summary>
+        /// Handle file data packet in load data statement
+        /// </summary>
+        private void HandleDataLoadResponse()
+        {
+            Log("all file data received, File byte sie: " + _FileBuffer.Count());
+            
+            int head = 0;
+            while (true)
+            {
+                byte[] packetLengthBytes = _FileBuffer.GetRange(head, 3).ToArray();
+                head += 3;
+                int packetLength = FixedLengthInteger_toInt(packetLengthBytes);
+                Log("packet length: " + packetLength);
+                byte[] sequence = _FileBuffer.GetRange(head, 1).ToArray();
+                head += 1;
+                Log("sequence: " + FixedLengthInteger_toInt( sequence ));
+
+                if (packetLength == 0)
+                {
+                    break;
+                }
+
+                // get file bytes in this packet
+                byte[] fileBytes = _FileBuffer.GetRange(head, packetLength).ToArray();
+                head += packetLength;
+                string fileString = RestOfPacketString_bytesToString(fileBytes);
+                _FileStringBuffer += fileString;
+            }
+
+            Log(_FileStringBuffer);
+            // store process
+
+            SendOkPacket();
         }
 
         #region Generic Response Packets
 
-        private void SendOkPacket()
+        private void SendOkPacket(int effectedRow = 0, int lastInsertId = 0, int numberOfWarnings = 0, string msg = null)
         {
-            List<byte> ok = new List<byte>();
-            ok.Add(0x00); // OK
-            ok.Add(0x00); // affected rows
-            ok.Add(0x00); // last insert id
-            ok.Add(0x02); // Say autocommit was set
-            ok.Add(0x00);
-            ok.Add(0x00); // No warnings
-            ok.Add(0x00);
+            List<byte> packet = new List<byte>();
+            packet.Add(0x00); // OK packet
 
-            SendPacket(ok.ToArray());
+            packet.AddRange(LengthEncodedInteger(effectedRow)); // affected rows
+            packet.AddRange(LengthEncodedInteger(lastInsertId)); // last insert id
+
+            if (Convert.ToBoolean(_ClientCapabilities & CLIENT_PROTOCOL_41))
+            {
+                // server status, int<2>
+                packet.AddRange(ServerStatus);
+                // warnings
+                packet.AddRange(FixedLengthInteger(numberOfWarnings, 2));
+            }
+            else if (Convert.ToBoolean(_ClientCapabilities & CLIENT_TRANSACTIONS))
+            {
+                // server status, int<2>
+                packet.AddRange(ServerStatus);
+            }
+
+            // message
+            if (msg != null)
+            {
+                if (Convert.ToBoolean(_ClientCapabilities & CLIENT_SESSION_TRACK))
+                {
+                    packet.AddRange(LengthEncodedString(msg));
+                    if (Convert.ToBoolean(_ServerStatus & SERVER_SESSION_STATE_CHANGED))
+                    {
+                        // TODO: what is SERVER_SESSION_STATE_CHANGED???
+                        packet.AddRange(LengthEncodedString("???"));
+                    }
+                }
+                else
+                {
+                    packet.AddRange(RestOfPacketString(msg));
+                }
+            }
+
+            SendPacket(packet.ToArray());
             Log("send ok packet");
         }
 
@@ -826,7 +1124,13 @@ namespace MySqlServer
 
         #region Integer types
 
-        // type int<>
+        /// <summary>
+        /// Type int<>
+        /// Fixed-Length Integer
+        /// </summary>
+        /// <param name="theInt"></param>
+        /// <param name="length"></param>
+        /// <returns></returns>
         public static byte[] FixedLengthInteger(int theInt, int length)
         {
             byte[] resultArray = new byte[length];
@@ -847,7 +1151,14 @@ namespace MySqlServer
             return sum;
         }
 
-        // type int<lenenc>
+        /// <summary>
+        /// Type int<lenenc>
+        /// Length-Encoded Integer
+        /// An integer that consumes 1, 3, 4, or 9 bytes, depending on its numeric value
+        /// https://dev.mysql.com/doc/internals/en/integer.html#packet-Protocol::LengthEncodedInteger
+        /// </summary>
+        /// <param name="value"></param>
+        /// <returns></returns>
         public static byte[] LengthEncodedInteger(long value)
         {
             if (value >= 251 && value < Math.Pow(2, 16))
@@ -908,22 +1219,17 @@ namespace MySqlServer
         public static int LengthEncodedInteger_intLength(byte[] bytes)
         {
             // 8-byte integer
-            if (bytes[0] == 0xfe)
+            switch (bytes[0])
             {
-                //Console.WriteLine("8-byte int");
-                return 8;
-            }
-            // 3-byte integer
-            if (bytes[0] == 0xfd)
-            {
-                //Console.WriteLine("3-byte int");
-                return 3;
-            }
-            // 2-byte integer
-            if (bytes[0] == 0xfc)
-            {
-                //Console.WriteLine("2-byte int");
-                return 2;
+                case 0xfe:
+                    //Console.WriteLine("8-byte int");
+                    return 8;
+                case 0xfd:
+                    //Console.WriteLine("3-byte int");
+                    return 3;
+                case 0xfc:
+                    //Console.WriteLine("2-byte int");
+                    return 2;
             }
 
             // 1-byte integer
@@ -935,7 +1241,12 @@ namespace MySqlServer
 
         #region string types
 
-        // type string<lenenc>
+        /// <summary>
+        /// Type string<lenenc>
+        /// Length encoded string
+        /// </summary>
+        /// <param name="str"></param>
+        /// <returns></returns>
         public static byte[] LengthEncodedString(string str)
         {
             List<byte> bytes = new List<byte>();
@@ -945,7 +1256,13 @@ namespace MySqlServer
             return bytes.ToArray();
         }
 
-        // type string<fix>
+        /// <summary>
+        /// Type string<fix>
+        /// Fixed length string
+        /// </summary>
+        /// <param name="str"></param>
+        /// <param name="length"></param>
+        /// <returns></returns>
         public static byte[] FixedLengthString(string str, int length)
         {
             byte[] bytes = new byte[length];
@@ -956,13 +1273,18 @@ namespace MySqlServer
             }
             catch (Exception ex)
             {
-                Console.WriteLine("string length longer than fix length {0}", ex);
+                Console.WriteLine("string length longer than fix length {0}", length);
             }
             return bytes;
         }
 
-        // tyoe string<var>
-        // The length of the string is determined by another field or is calculated at runtimes
+        /// <summary>
+        /// Type string<var>
+        /// The length of the string is determined by another field or is calculated at runtimes
+        /// </summary>
+        /// <param name="str"></param>
+        /// <param name="length"></param>
+        /// <returns></returns>
         public static byte[] VariableLengthString(string str, int length)
         {
             byte[] bytes = new byte[length];
@@ -970,13 +1292,29 @@ namespace MySqlServer
             return bytes;
         }
 
-        // type string<EOF>
+        /// <summary>
+        /// Type string<EOF>
+        /// If a string is the last component of a packet,
+        /// its length can be calculated from the overall packet length minus the current position.
+        /// </summary>
+        /// <param name="str"></param>
+        /// <returns></returns>
         public static byte[] RestOfPacketString(string str)
         {
             return Encoding.ASCII.GetBytes(str);
         }
 
-        // type string<NUL>, Strings that are terminated by a [00] byte.
+        public static string RestOfPacketString_bytesToString(byte[] bytes)
+        {
+            return Encoding.ASCII.GetString(bytes);
+        }
+
+        /// <summary>
+        /// Type string<NUL>
+        /// Strings that are terminated by a [00] byte.
+        /// </summary>
+        /// <param name="str"></param>
+        /// <returns></returns>
         public static byte[] NulTerminatedString(string str)
         {
             List<byte> bytes = new List<byte>();
@@ -989,7 +1327,7 @@ namespace MySqlServer
 
 
         /// <summary>
-        /// Convert string<NUL> bytes to sting
+        /// Convert string NUL bytes to string
         /// </summary>
         /// <param name="bytes">bytes of encoded string nul</param>
         /// <returns>decoded string</returns>
@@ -1009,7 +1347,7 @@ namespace MySqlServer
         }
 
         /// <summary>
-        /// Get length of string nul
+        /// Get length of string NUL
         /// </summary>
         /// <param name="bytes">bytes of encoded string nul</param>
         /// <returns>length of string bytes, include [00] byte</returns>
@@ -1037,8 +1375,12 @@ namespace MySqlServer
         /// <param name="index">start index</param>
         /// <param name="length">length of new array</param>
         /// <returns>subarray</returns>
-        public static T[] SubArray<T>(T[] bytes, long index, long length)
+        public static T[] SubArray<T>(T[] bytes, long index, long length = 0)
         {
+            if (length == 0)
+            {
+                length = bytes.Length - index -1;
+            }
             T[] result = new T[length];
             try
             {
@@ -1047,7 +1389,7 @@ namespace MySqlServer
             catch (Exception ex)
             {
                 Console.WriteLine("error in subarray");
-                throw new Exception("error in subarray");
+                throw new Exception("error in subarray " + ex);
             }
             return result;
         }
@@ -1083,7 +1425,7 @@ namespace MySqlServer
             return hex.ToString();
         }
 
-        public byte[] GetBytesFromPEM(string pemString, string section)
+        public static byte[] GetBytesFromPEM(string pemString, string section)
         {
             var header = String.Format("-----BEGIN {0}-----", section);
             var footer = String.Format("-----END {0}-----", section);
@@ -1101,7 +1443,7 @@ namespace MySqlServer
             return Convert.FromBase64String(pemString.Substring(start, end));
         }
 
-        public string GetStringFromPEM(string pemString, string section)
+        public static string GetStringFromPEM(string pemString, string section)
         {
             var header = String.Format("-----BEGIN {0}-----", section);
             var footer = String.Format("-----END {0}-----", section);
@@ -1127,10 +1469,234 @@ namespace MySqlServer
             }
         }
 
+
+        private int GetSequence()
+        {
+            int val = _Sequence;
+            _Sequence += 1;
+            if (_Sequence > 255)
+            {
+                _Sequence = 0;
+            }
+            return val;
+        }
+
+        private void GenerateSalt1()
+        {
+            _Salt1 = GetSalt(8);
+        }
+
+        private void GenerateSalt2()
+        {
+            _Salt2 = GetSalt(12);
+        }
+
+        private byte[] GetSalt(int maximumSaltLength)
+        {
+            var salt = new byte[maximumSaltLength];
+            using (var random = new RNGCryptoServiceProvider())
+            {
+                random.GetNonZeroBytes(salt);
+            }
+
+            return salt;
+        }
+
+        private void UseDatabase(string dbname)
+        {
+            // TODO: check dabase name exists
+            _ConnectedDB = dbname;
+        }
+
+        /// <summary>
+        /// Verify 20-byte-password with real password
+        /// </summary>
+        /// <param name="inputPassword">20-byte-long input password</param>
+        /// <param name="userPassword">user password</param>
+        /// <returns></returns>
+        private bool VerifyPassword(byte[] inputPassword, byte[] userPassword)
+        {
+            if (inputPassword.Length != 20)
+            {
+                return false;
+            }
+            // password is calculated by
+            // SHA1( password ) XOR SHA1( "20-bytes random data from server" <concat> SHA1( SHA1( password ) ) )
+            byte[] salt = ConcatArrays(_Salt1, _Salt2);
+            SHA1 sha1Hash = SHA1.Create();
+
+            // part 1
+            byte[] part1 = sha1Hash.ComputeHash(userPassword);
+
+            // part 2
+            byte[] partBytes = ConcatArrays(salt, sha1Hash.ComputeHash(part1));
+            byte[] part2 = sha1Hash.ComputeHash(partBytes);
+
+            // XOR
+            byte[] result = new byte[20];
+            for (var i = 0; i < 20; i++)
+            {
+                byte b = (byte)(part1[i] ^ part2[i]);
+                if (b != inputPassword[i])
+                {
+                    Log("wrong password");
+                    return false;
+                }
+                result[i] = b;
+            }
+
+            Log("correct password");
+            //Log("correct {0}, come in {1}", ByteArrayToHexString(result), ByteArrayToHexString(inputPassword));
+
+            return true;
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="columns"></param>
+        private void SendColumnDefinition(Column[] columns)
+        {
+            for (var i = 0; i < columns.Length; i++)
+            {
+                Column column = columns[i];
+                List<byte> packet = new List<byte>();
+
+                int character_set = 33; // utf8_general_ci
+                int max_col_length = 1024; //This is totally made up.  it shouldn't be
+                byte column_type = (byte)column._ColumnType;
+
+                packet.AddRange(LengthEncodedString("def")); // catalog
+                packet.AddRange(LengthEncodedString(column.ColumnName)); // schema-name
+                packet.AddRange(LengthEncodedString(column.TableName)); // virtual
+                packet.AddRange(LengthEncodedString(column.TableName)); // physical table-name
+                packet.AddRange(LengthEncodedString(column.ColumnName)); // virtual column name
+                packet.AddRange(LengthEncodedString(column.ColumnName)); // physical column name
+                packet.Add(0x0c); // length of the following fields (always 0x0c)
+                packet.AddRange(FixedLengthInteger(character_set, 2)); // character_set is the column character set and is defined in Protocol::CharacterSet.
+                packet.AddRange(FixedLengthInteger(max_col_length, 4)); // maximum length of the field
+                packet.AddRange(FixedLengthInteger(column_type, 1)); // column_type, type of the column as defined in Column Type
+
+                // flags
+                packet.Add(0x00);
+                packet.Add(0x00);
+
+                // decimals, max shown decimal digits
+                packet.Add(0x00); // 0x00 for integers and static strings
+                                  // 0x1f for dynamic strings, double, float
+                                  // 0x00 to 0x51 for decimals
+
+                packet.Add(0x00); //Filler
+                packet.Add(0x00);
+
+                SendPacket(packet.ToArray());
+            }
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="rows"></param>
+        private void SendTextResultsetRow(Row[] rows)
+        {
+            for (var i = 0; i < rows.Length; i++)
+            {
+                Row row = rows[i];
+                List<byte> packet = new List<byte>();
+
+                for (var j = 0; j < row._Values.Length; j++)
+                {
+                    packet.AddRange(LengthEncodedString(row._Values[j].ToString()));
+                }
+                SendPacket(packet.ToArray());
+            }
+        }
+
+
+        /// <summary>
+        /// Read tokens, get the table name, handle . character
+        /// </summary>
+        /// <param name="tokens"></param>
+        /// <returns>table object that contains table name and database name</returns>
+        private Table GetQualifiedTableName(ref List<TSQLToken> tokens)
+        {
+            TSQLToken possibleColName = tokens[0];
+            tokens.RemoveAt(0);
+
+            if (tokens.Count != 0 && tokens[0].Text == ".")
+            {
+                tokens.RemoveAt(0);
+                TSQLToken actualColName = tokens[0];
+                tokens.RemoveAt(0);
+                string databaseName = possibleColName.Text;
+                return new Table(actualColName.Text, databaseName);
+            }
+            return new Table(possibleColName.Text, _ConnectedDB);
+        }
+
+        /// <summary>
+        /// Read tokens, get the first column name, handle . character
+        /// </summary>
+        /// <param name="tokens"></param>
+        /// <returns>column object that contains table name and column name</returns>
+        private Column GetQualifiedColumnName(ref List<TSQLToken> tokens)
+        {
+            TSQLToken possibleColName = tokens[0];
+            tokens.RemoveAt(0);
+
+            if (tokens.Count != 0 && tokens[0].Text == ".")
+            {
+                tokens.RemoveAt(0);
+                TSQLToken actualColName = tokens[0];
+                tokens.RemoveAt(0);
+                string tableName = possibleColName.Text;
+                return new Column
+                {
+                    ColumnName = actualColName.Text,
+                    TableName = tableName,
+                    _TokenType = possibleColName.Type
+                };
+            }
+            return new Column
+            {
+                ColumnName = possibleColName.Text,
+                _TokenType = possibleColName.Type
+            };
+        }
+
+        /// <summary>
+        /// Remove first item and check if it is same as keyword
+        /// </summary>
+        /// <param name="tokens"></param>
+        /// <param name="keyword"></param>
+        private void PopAndCheck(ref List<TSQLToken> tokens, string keyword)
+        {
+            TSQLToken first = tokens[0];
+            tokens.RemoveAt(0);
+            if (first.Text.ToLower() != keyword)
+            {
+                throw new Exception(string.Format("{0}!={1}", first.Text, keyword));
+            }
+        }
+
+        /// <summary>
+        /// Get the first token in token list
+        /// </summary>
+        /// <param name="tokens">token list</param>
+        /// <returns>first token, null if nothing</returns>
+        private string GetFirst(List<TSQLToken> tokens)
+        {
+            if (tokens.Count == 0)
+            {
+                return "";
+            }
+            return tokens[0].Text;
+        }
+
         public void LogBasic(string msg)
         {
             string timeStr = DateTime.Now.Minute.ToString() + '.' + DateTime.Now.Second.ToString() + '.' + DateTime.Now.Millisecond.ToString();
-            Console.WriteLine("[client metadata][" + timeStr + "]" + "[" + _IpPort + "] " + msg);
+            Console.WriteLine("[client session][" + timeStr + "]" + "[" + _IpPort + "] " + msg);
         }
 
         public void Log(string msg)
@@ -1138,7 +1704,7 @@ namespace MySqlServer
             if (Debug)
             {
                 string timeStr = DateTime.Now.Minute.ToString() + '.' + DateTime.Now.Second.ToString() + '.' + DateTime.Now.Millisecond.ToString();
-                Console.WriteLine("[client metadata][" + timeStr + "]" + "[" + _IpPort + "] " + msg);
+                Console.WriteLine("[client session][" + timeStr + "]" + "[" + _IpPort + "] " + msg);
             }
         }
 

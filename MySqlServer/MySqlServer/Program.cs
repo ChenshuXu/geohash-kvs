@@ -14,60 +14,32 @@ namespace MySqlServer
                 );
             server.Debug = true;
 
+            Console.Write("Server starting...");
             server.StartAsync();
+            Console.WriteLine("Done!");
 
-            while (true)
+            Console.WriteLine("Press Enter to stop the server or '!' to restart the server...");
+
+            // Perform text input
+            for (; ; )
             {
-                string userInput = InputString("Command [? for help]:", null, false);
-                switch (userInput)
+                string line = Console.ReadLine();
+                if (line == string.Empty)
+                    break;
+
+                // Restart the server
+                if (line == "!")
                 {
-                    case "?":
-                        break;
-                    case "q":
-                    case "Q":
-                        break;
-                    case "c":
-                    case "C":
-                    case "cls":
-                        break;
-                    case "list":
-                        break;
-                    case "send":
-                        break;
-                    case "remove":
-                        Console.Write("IP:Port: ");
-                        string ipPort = Console.ReadLine();
-                        break;
-                    case "dispose":
-                        break;
+                    Console.Write("Server restarting...");
+                    server.Restart();
+                    Console.WriteLine("Done!");
                 }
             }
-        }
 
-        static string InputString(string question, string defaultAnswer, bool allowNull)
-        {
-            while (true)
-            {
-                Console.Write(question);
-
-                if (!String.IsNullOrEmpty(defaultAnswer))
-                {
-                    Console.Write(" [" + defaultAnswer + "]");
-                }
-
-                Console.Write(" ");
-
-                string userInput = Console.ReadLine();
-
-                if (String.IsNullOrEmpty(userInput))
-                {
-                    if (!String.IsNullOrEmpty(defaultAnswer)) return defaultAnswer;
-                    if (allowNull) return null;
-                    else continue;
-                }
-
-                return userInput;
-            }
+            // Stop the server
+            Console.Write("Server stopping...");
+            server.Stop();
+            Console.WriteLine("Done!");
         }
     }
 }

@@ -31,17 +31,26 @@ namespace TestMultiClient
             string connStr_NoSSL = "server=127.0.0.1;port=3306;uid=root;" +
                 "pwd=" + root_password + ";SslMode=None;Connection Timeout=3000";
 
-            string connStr_SSL = "server=127.0.0.1;port=3306;uid=root;" +
+            string connStr_SSL = "server=127.0.0.1;port=3306;uid=root;Connection Timeout=3000;" +
                 "pwd=" + root_password;
 
             Log("Starting client tasks");
             for (int i = 0; i < clientThreads; i++)
             {
                 Log("Starting client " + i);
-                Task.Run(() => ClientTask(connStr_NoSSL));
+                
+                Task.Run(() => ClientTask(connStr_SSL));
             }
 
             Console.ReadLine();
+        }
+
+        private static void ClientTask2()
+        {
+            string timeStr = DateTime.Now.Minute.ToString() + '.' + DateTime.Now.Second.ToString() + '.' + DateTime.Now.Millisecond.ToString();
+            Log("entering 2", timeStr);
+            Thread.Sleep(1000);
+            Log("task2 finished", timeStr);
         }
 
         private static void ClientTask(string connStr)

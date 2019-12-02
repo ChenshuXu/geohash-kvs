@@ -17,22 +17,6 @@ namespace MySqlServer
     public class Server
     {
         /// <summary>
-        /// Buffer size to use when reading input and output streams.  Default is 65536.
-        /// </summary>
-        public int StreamBufferSize
-        {
-            get
-            {
-                return _ReceiveBufferSize;
-            }
-            set
-            {
-                if (value < 1) throw new ArgumentException("Read stream buffer size must be greater than zero.");
-                _ReceiveBufferSize = value;
-            }
-        }
-
-        /// <summary>
         /// Maximum amount of time to wait before considering a client idle and disconnecting them. 
         /// By default, this value is set to 0, which will never disconnect a client due to inactivity.
         /// The timeout is reset any time a message is received from a client or a message is sent to a client.
@@ -90,7 +74,6 @@ namespace MySqlServer
             Timeout = 2
         }
 
-        private int _ReceiveBufferSize = 4096;
         private int _IdleClientTimeoutSeconds = 0;
 
         private string _ListenerIp;
@@ -158,7 +141,7 @@ namespace MySqlServer
 
                     while(true)
                     {
-                        byte[] buffer = new Byte[StreamBufferSize];
+                        byte[] buffer = new Byte[client._ReceiveBufferSize];
                         if (!client._UseSsl)
                         {
                             client.NetworkStream.Read(buffer);
@@ -198,6 +181,16 @@ namespace MySqlServer
             Log("server starting on " + _ListenerIp + ":" + _ListenerPort);
             _Listener = new TcpListener(_IPAddress, _ListenerPort);
             _Listener.Start();
+        }
+
+        public void Restart()
+        {
+
+        }
+
+        public void Stop()
+        {
+            
         }
 
         #endregion
@@ -328,7 +321,6 @@ namespace MySqlServer
                         await Task.Delay(30);
                         continue;
                     }
-
                     unawaited = Task.Run(() => DataReceived(client.IpPort, data));
                 }
                 catch (Exception e)
@@ -377,7 +369,7 @@ namespace MySqlServer
             if (!client.NetworkStream.CanRead) return null;
             if (!client.NetworkStream.DataAvailable) return null;
 
-            byte[] buffer = new byte[_ReceiveBufferSize];
+            byte[] buffer = new byte[client._ReceiveBufferSize];
             int read = 0;
 
             while (true)
@@ -386,12 +378,12 @@ namespace MySqlServer
                 {
                     if (!client._UseSsl)
                     {
-                        //Log("read NetworkStream");
+                        Log("read NetworkStream");
                         read = await client.NetworkStream.ReadAsync(buffer, 0, buffer.Length);
                     }
                     else if (client._UseSsl)
                     {
-                        //Log("read SslStream");
+                        Log("read SslStream");
                         read = await client.SslStream.ReadAsync(buffer, 0, buffer.Length);
                     }
 

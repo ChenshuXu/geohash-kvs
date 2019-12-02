@@ -21,7 +21,8 @@ namespace MySqlTest
                 );
             server.Debug = true;
 
-            Task.Run(() => server.StartSync());
+            //Task.Run(() => server.StartSync());
+            server.StartAsync();
 
             Thread.Sleep(1000);
 
@@ -66,6 +67,11 @@ namespace MySqlTest
 
             conn.Close();
             Console.WriteLine("Done.");
+        }
+
+        static void Import()
+        {
+
         }
     }
 }
