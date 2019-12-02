@@ -950,22 +950,25 @@ namespace MySqlServer
 
         private async Task RunDataLoad()
         {
+            int lastSeq = -1;
             while(true)
             {
                 // get last possible packet
                 byte[] possibleLastPacket = _FileBuffer.Skip(Math.Max(0, _FileBuffer.Count() - 4)).ToArray();
                 byte[] packetLengthBytes = SubArray(possibleLastPacket, 0, 3);
                 int packetLength = FixedLengthInteger_toInt(packetLengthBytes);
-                byte sequence = possibleLastPacket[3];
-
-                if (packetLength == 0)
+                int sequence = FixedLengthInteger_toInt(SubArray(possibleLastPacket, 3, 1));
+                Log("sequence: " + sequence);
+                PrintAllBytes(_FileBuffer.ToArray());
+                if (packetLength == 0 || sequence == lastSeq)
                 {
-                    Log("last packet sequence: " + FixedLengthInteger_toInt(new byte[] { sequence }));
+                    Log("last packet sequence: " + sequence);
                     SetState(Phase.CommandPhase);
                     break;
                 }
 
-                await Task.Delay(50);
+                lastSeq = sequence;
+                await Task.Delay(500);
             }
         }
 
@@ -975,7 +978,7 @@ namespace MySqlServer
         private void HandleDataLoadResponse()
         {
             Log("all file data received, File byte sie: " + _FileBuffer.Count());
-            
+
             int head = 0;
             while (true)
             {
@@ -983,9 +986,9 @@ namespace MySqlServer
                 head += 3;
                 int packetLength = FixedLengthInteger_toInt(packetLengthBytes);
                 Log("packet length: " + packetLength);
-                byte[] sequence = _FileBuffer.GetRange(head, 1).ToArray();
+                int sequence = FixedLengthInteger_toInt(_FileBuffer.GetRange(head, 1).ToArray());
                 head += 1;
-                Log("sequence: " + FixedLengthInteger_toInt( sequence ));
+                Log("sequence: " + sequence);
 
                 if (packetLength == 0)
                 {
@@ -997,6 +1000,11 @@ namespace MySqlServer
                 head += packetLength;
                 string fileString = RestOfPacketString_bytesToString(fileBytes);
                 _FileStringBuffer += fileString;
+
+                if (head == _FileBuffer.Count())
+                {
+                    break;
+                }
             }
 
             Log(_FileStringBuffer);

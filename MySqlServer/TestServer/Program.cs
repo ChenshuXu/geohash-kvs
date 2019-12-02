@@ -89,8 +89,8 @@ namespace TestServer
         /// <param name="connStr"></param>
         static void TestLoadData(string connStr)
         {
-            //string filePath = "../../../Resources/imptest.txt";
-            string filePath = "../../../Resources/Crimes-2019.csv";
+            string filePath = "../../../Resources/imptest.txt";
+            //string filePath = "../../../Resources/Crimes-2019.csv";
             string[] lines = System.IO.File.ReadAllLines(filePath);
             foreach (var line in lines)
             {
