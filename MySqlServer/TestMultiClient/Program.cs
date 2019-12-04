@@ -20,7 +20,7 @@ namespace TestMultiClient
                 certPath,
                 "pswd"
                 );
-            server.Debug = true;
+            server.Debug = false;
 
             server.StartAsync();
 
@@ -28,11 +28,10 @@ namespace TestMultiClient
 
             Thread.Sleep(3000);
 
-            string connStr_NoSSL = "server=127.0.0.1;port=3306;uid=root;" +
-                "pwd=" + root_password + ";SslMode=None;Connection Timeout=3000";
-
             string connStr_SSL = "server=127.0.0.1;port=3306;uid=root;Connection Timeout=3000;" +
                 "pwd=" + root_password;
+
+            string connStr_NoSSL = connStr_SSL + ";SslMode=None";
 
             Log("Starting client tasks");
             for (int i = 0; i < clientThreads; i++)
@@ -40,6 +39,7 @@ namespace TestMultiClient
                 Log("Starting client " + i);
                 
                 Task.Run(() => ClientTask(connStr_SSL));
+                Task.Run(() => ClientTask(connStr_NoSSL));
             }
 
             Console.ReadLine();

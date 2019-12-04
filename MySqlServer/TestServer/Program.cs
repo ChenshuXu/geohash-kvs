@@ -22,18 +22,30 @@ namespace TestServer
                 );
             server.Debug = true;
 
+            Console.Write("Server starting...");
             server.StartAsync();
-
-            Thread.Sleep(1000);
+            
 
             string connStr_SSL = "server=127.0.0.1;port=3306;uid=root;" +
                 "pwd=" + root_password + ";database=dummy;allowLoadLocalInfile=true";
 
             string connStr_NoSSL = connStr_SSL + ";SslMode=None";
 
+            //Console.WriteLine("Press ENTER to start select test without ssl");
+            //Console.ReadLine();
+            //TestSelect(connStr_NoSSL);
 
+            //Console.WriteLine("Press ENTER to start select test with ssl");
+            //Console.ReadLine();
             //TestSelect(connStr_SSL);
+
+            //Console.WriteLine("Press ENTER to start load data test without ssl");
+            //Console.ReadLine();
             TestLoadData(connStr_NoSSL);
+
+            //Console.WriteLine("Press ENTER to start load data test with ssl");
+            //Console.ReadLine();
+            //TestLoadData(connStr_SSL);
         }
 
         /// <summary>
@@ -89,17 +101,12 @@ namespace TestServer
         /// <param name="connStr"></param>
         static void TestLoadData(string connStr)
         {
-            string filePath = "../../../Resources/imptest.txt";
-            //string filePath = "../../../Resources/Crimes-2019.csv";
+            string filePath = "../../../Resources/imptest-5000.txt";
             string[] lines = System.IO.File.ReadAllLines(filePath);
-            foreach (var line in lines)
-            {
-                //Console.WriteLine(line);
-            }
 
             // connection string for real server
             string ConnectionString = "server=127.0.0.1;port=3306;uid=root;" +
-                "pwd=" + root_password + ";SslMode=None;database=test;allowLoadLocalInfile=true";
+                "pwd=" + root_password + ";database=test;allowLoadLocalInfile=true";
 
             Console.WriteLine("TestLoadData entering");
             using (MySqlConnection conn = new MySqlConnection(connStr))
@@ -110,7 +117,7 @@ namespace TestServer
                     conn.Open();
                     Console.WriteLine("connected");
 
-                    string sql = "LOAD DATA LOCAL INFILE '" + filePath + "' INTO TABLE imptest FIELDS TERMINATED BY 'aaa' ENCLOSED BY 'bbb' ESCAPED BY 'ccc' LINES TERMINATED BY 'ddd' STARTING BY 'eee';";
+                    string sql = "LOAD DATA LOCAL INFILE '" + filePath + "' INTO TABLE imptest FIELDS TERMINATED BY ',' LINES TERMINATED BY '\n';";
                     MySqlCommand cmd = new MySqlCommand(sql, conn);
                     MySqlDataReader rdr = cmd.ExecuteReader();
                     while (rdr.Read())

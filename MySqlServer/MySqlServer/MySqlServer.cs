@@ -253,10 +253,7 @@ namespace MySqlServer
 
                 try
                 {
-                    Log("[] before AcceptTcpClientAsync");
                     TcpClient tcpClient = await _Listener.AcceptTcpClientAsync();
-                    //TcpClient tcpClient = _Listener.AcceptTcpClient();
-                    Log("[] after AcceptTcpClientAsync");
                     string clientIp = tcpClient.Client.RemoteEndPoint.ToString();
 
                     Log("[" + clientIp + "] starting data receiver");
@@ -385,6 +382,7 @@ namespace MySqlServer
                     {
                         Log("read SslStream");
                         read = await client.SslStream.ReadAsync(buffer, 0, buffer.Length);
+                        Log("read: " + read);
                     }
 
                     if (read > 0)

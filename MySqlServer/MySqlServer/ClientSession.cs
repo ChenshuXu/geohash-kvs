@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Security;
@@ -149,8 +150,7 @@ namespace MySqlServer
         private byte[] _Salt1; // 8 bytes
         private byte[] _Salt2; // 12 bytes
 
-        private List<byte> _FileBuffer = new List<byte>();
-        private string _FileStringBuffer;
+        private List<byte[]> _FileBuffer = new List<byte[]>();
 
         public bool Debug = false;
 
@@ -227,7 +227,6 @@ namespace MySqlServer
 
         public void DataReceived(byte[] data)
         {
-            Log("DataReceived: "+data.Length);
             try
             {
                 switch (_ServerPhase)
@@ -241,7 +240,8 @@ namespace MySqlServer
                         HandleCommand(data);
                         break;
                     case Phase.WaitingDataPhase:
-                        _FileBuffer.AddRange(data);
+                        Log("DataReceived: " + data.Length);
+                        _FileBuffer.Add(data); // TODO: may have improvements on buffering
                         break;
                 }
             }
@@ -566,17 +566,18 @@ namespace MySqlServer
         {
 
             // Get packet length and sequence number
-            byte[] packetLength = new byte[3];
-            byte sequence = data[3];
-            Array.Copy(data, packetLength, 3);
-            int packetLengthInt = packetLength[0];
+            byte[] packetLengthBytes = SubArray(data, 0, 3);
+            int packetLengthInt = FixedLengthInteger_toInt(packetLengthBytes);
             Log("sql packet length: "+ packetLengthInt);
+
+            // Get sequence
+            int sequence = FixedLengthInteger_toInt(SubArray(data, 3, 1));
 
             // Get text protocol
             byte[] queryPacket = SubArray(data, 4, packetLengthInt);
             byte textProtocol = queryPacket[0];
 
-            switch (textProtocol) 
+            switch (textProtocol)
             {
                 // COM_QUIT
                 case 0x01:
@@ -590,7 +591,7 @@ namespace MySqlServer
                     Log("COM_INIT_DB use database");
                     // string[EOF]
                     byte[] dbBytes = SubArray(queryPacket, 1, packetLengthInt - 1);
-                    string dbString = Encoding.ASCII.GetString(dbBytes, 0, dbBytes.Length);
+                    string dbString = RestOfPacketString_bytesToString(dbBytes);
                     Log(dbString);
                     UseDatabase(dbString);
                     SendOkPacket();
@@ -602,7 +603,7 @@ namespace MySqlServer
                     // string[EOF]
                     GetSequence();
                     byte[] queryBytes = SubArray(queryPacket, 1, packetLengthInt - 1);
-                    string queryString = Encoding.ASCII.GetString(queryBytes, 0, queryBytes.Length);
+                    string queryString = RestOfPacketString_bytesToString(queryBytes);
                     HandleQuery(queryString);
                     return;
 
@@ -815,8 +816,10 @@ namespace MySqlServer
                 case "collation":
                     return _DatabaseController.InformationSchema.GetTable("COLLATIONS");
                 case "databases":
+                    // TODO: show databases
                     break;
                 case "tables":
+                    // TODO: show tables
                     break;
             }
 
@@ -875,6 +878,7 @@ namespace MySqlServer
                                 fields_terminated_by = tokens[0].Text[1..^1];
                                 tokens.RemoveAt(0);
                                 break;
+
                             case "enclosed":
                                 PopAndCheck(ref tokens, "enclosed");
                                 PopAndCheck(ref tokens, "by");
@@ -882,6 +886,7 @@ namespace MySqlServer
                                 fields_enclosed_by = tokens[0].Text[1..^1];
                                 tokens.RemoveAt(0);
                                 break;
+
                             case "escaped":
                                 PopAndCheck(ref tokens, "escaped");
                                 PopAndCheck(ref tokens, "by");
@@ -953,14 +958,16 @@ namespace MySqlServer
             int lastSeq = -1;
             while(true)
             {
+                await Task.Delay(50);
+                byte[] lastPacket = _FileBuffer.Last();
                 // get last possible packet
-                byte[] possibleLastPacket = _FileBuffer.Skip(Math.Max(0, _FileBuffer.Count() - 4)).ToArray();
+                byte[] possibleLastPacket = lastPacket.Skip(Math.Max(0, lastPacket.Count() - 4)).ToArray();
                 byte[] packetLengthBytes = SubArray(possibleLastPacket, 0, 3);
                 int packetLength = FixedLengthInteger_toInt(packetLengthBytes);
                 int sequence = FixedLengthInteger_toInt(SubArray(possibleLastPacket, 3, 1));
-                Log("sequence: " + sequence);
-                PrintAllBytes(_FileBuffer.ToArray());
-                if (packetLength == 0 || sequence == lastSeq)
+                //Log("sequence: " + sequence);
+                //Log("length: " + packetLength);
+                if (packetLength == 0) // TODO: || sequence == lastSeq
                 {
                     Log("last packet sequence: " + sequence);
                     SetState(Phase.CommandPhase);
@@ -968,7 +975,7 @@ namespace MySqlServer
                 }
 
                 lastSeq = sequence;
-                await Task.Delay(500);
+                
             }
         }
 
@@ -977,40 +984,91 @@ namespace MySqlServer
         /// </summary>
         private void HandleDataLoadResponse()
         {
-            Log("all file data received, File byte sie: " + _FileBuffer.Count());
+            Log("all file data received, File byte size: " + _FileBuffer.Count());
 
+            List<byte> allFileBytes = new List<byte>();
+            List<byte> allFileBufferBytes = new List<byte>();
+
+            foreach(var v in _FileBuffer)
+            {
+                allFileBufferBytes.AddRange(v);
+            }
+            //WriteToFile(allFileBufferBytes.ToArray(), "received-bytes");
+
+            int lastSequence = 1;
             int head = 0;
             while (true)
             {
-                byte[] packetLengthBytes = _FileBuffer.GetRange(head, 3).ToArray();
+                byte[] packetLengthBytes = allFileBufferBytes.GetRange(head, 3).ToArray();
                 head += 3;
                 int packetLength = FixedLengthInteger_toInt(packetLengthBytes);
                 Log("packet length: " + packetLength);
-                int sequence = FixedLengthInteger_toInt(_FileBuffer.GetRange(head, 1).ToArray());
+                int sequence = FixedLengthInteger_toInt(allFileBufferBytes.GetRange(head, 1).ToArray());
                 head += 1;
+                if (sequence != lastSequence + 1)
+                {
+                    Log("sequence not match error at " + sequence);
+                    //throw new Exception("sequence not match error at " + sequence);
+                }
+                lastSequence = sequence;
                 Log("sequence: " + sequence);
 
                 if (packetLength == 0)
                 {
+                    Log("arrive last packet");
                     break;
                 }
 
                 // get file bytes in this packet
-                byte[] fileBytes = _FileBuffer.GetRange(head, packetLength).ToArray();
+                byte[] fileBytes = allFileBufferBytes.GetRange(head, packetLength).ToArray();
                 head += packetLength;
-                string fileString = RestOfPacketString_bytesToString(fileBytes);
-                _FileStringBuffer += fileString;
-
-                if (head == _FileBuffer.Count())
+                allFileBytes.AddRange(fileBytes);
+                
+                if (head >= allFileBufferBytes.Count())
                 {
+                    Log("error arrive the end");
                     break;
                 }
             }
 
-            Log(_FileStringBuffer);
+            WriteToFile(allFileBytes.ToArray(), "imptest-result.txt");
+            
+            //_FileStringBuffer = RestOfPacketString_bytesToString(allFileBytes.ToArray());
+            //string docPath = "../../../";
+            //using (StreamWriter outputFile = new StreamWriter(Path.Combine(docPath, "imptest-result.txt"), true))
+            //{
+            //    outputFile.WriteLine(_FileStringBuffer);
+            //}
+            //Log(_FileStringBuffer);
             // store process
 
             SendOkPacket();
+        }
+
+
+
+        private void WriteToFile(byte[] data, string name)
+        {
+            string fileName = "../../../"+name;
+
+            try
+            {
+                // Check if file already exists. If yes, delete it.     
+                if (File.Exists(fileName))
+                {
+                    File.Delete(fileName);
+                }
+
+                // Create a new file     
+                using (FileStream fs = File.Create(fileName))
+                {
+                    fs.Write(data, 0, data.Length);
+                }
+            }
+            catch (Exception Ex)
+            {
+                Console.WriteLine(Ex.ToString());
+            }
         }
 
         #region Generic Response Packets
@@ -1079,7 +1137,7 @@ namespace MySqlServer
             bytes.AddRange(RestOfPacketString(message));
 
             SendPacket(bytes.ToArray());
-            Log("send err packet");
+            Log("send err packet:" + message);
         }
 
         private void SendEofPacket()
