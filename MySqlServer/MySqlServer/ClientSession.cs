@@ -347,7 +347,7 @@ namespace MySqlServer
                     break;
                 // exit waiting data phase
                 case Phase.WaitingDataPhase:
-                    HandleDataLoadResponse();
+                    //HandleDataLoadResponse();
                     break;
             }
 
@@ -357,7 +357,7 @@ namespace MySqlServer
             switch (_ServerPhase)
             {
                 case Phase.WaitingDataPhase:
-                    Task.Run(() => RunDataLoad());
+                    //Task.Run(() => RunDataLoad());
                     break;
             }
         }
@@ -779,7 +779,6 @@ namespace MySqlServer
                 // only support from one table,
                 // only support table from dummy database
 
-
             }
 
             // TODO: remaining clause
@@ -832,125 +831,93 @@ namespace MySqlServer
         /// <param name="tokens">query tokens</param>
         private void LoadData(List<TSQLToken> tokens)
         {
-            PopAndCheck(ref tokens, "load");
-            PopAndCheck(ref tokens, "data");
-            if (tokens[0].Text.ToLower() == "local")
-            {
-                PopAndCheck(ref tokens, "local");
-            }
-            PopAndCheck(ref tokens, "infile");
-            string fileName = tokens[0].Text.ToLower();
-            fileName = fileName[1..^1];
-            Log(fileName);
-            tokens.RemoveAt(0);
-
-            PopAndCheck(ref tokens, "into");
-            PopAndCheck(ref tokens, "table");
-
-            string tableName = tokens[0].Text.ToLower();
-            Log(tableName);
-            tokens.RemoveAt(0);
-
-            string fields_terminated_by = "\t";
-            string fields_enclosed_by = "";
-            string fields_escaped_by = "\\";
-
-            string lines_starting_by = "";
-            string lines_terminated_by = "\n";
-
-            // can handle different orders of the keywords
-            string first = GetFirst(tokens).ToLower();
-            while (first == "fields" || first == "columns" || first == "lines")
-            {
-                if (first == "fields" || first == "columns")
-                {
-                    tokens.RemoveAt(0);
-
-                    first = GetFirst(tokens).ToLower();
-                    while (first == "terminated" || first == "enclosed" || first == "escaped")
-                    {
-                        switch (first)
-                        {
-                            case "terminated":
-                                PopAndCheck(ref tokens, "terminated");
-                                PopAndCheck(ref tokens, "by");
-
-                                fields_terminated_by = tokens[0].Text[1..^1];
-                                tokens.RemoveAt(0);
-                                break;
-
-                            case "enclosed":
-                                PopAndCheck(ref tokens, "enclosed");
-                                PopAndCheck(ref tokens, "by");
-
-                                fields_enclosed_by = tokens[0].Text[1..^1];
-                                tokens.RemoveAt(0);
-                                break;
-
-                            case "escaped":
-                                PopAndCheck(ref tokens, "escaped");
-                                PopAndCheck(ref tokens, "by");
-
-                                fields_escaped_by = tokens[0].Text[1..^1];
-                                tokens.RemoveAt(0);
-                                break;
-                        }
-
-                        first = GetFirst(tokens).ToLower();
-                    }
-                }
-                else if (first == "lines")
-                {
-                    PopAndCheck(ref tokens, "lines");
-
-                    first = GetFirst(tokens).ToLower();
-                    while (first == "starting" || first == "terminated")
-                    {
-                        switch (first)
-                        {
-                            case "starting":
-                                PopAndCheck(ref tokens, "starting");
-                                PopAndCheck(ref tokens, "by");
-
-                                lines_starting_by = tokens[0].Text[1..^1];
-                                tokens.RemoveAt(0);
-                                break;
-                            case "terminated":
-                                PopAndCheck(ref tokens, "terminated");
-                                PopAndCheck(ref tokens, "by");
-
-                                lines_terminated_by = tokens[0].Text[1..^1];
-                                tokens.RemoveAt(0);
-                                break;
-                        }
-                        first = GetFirst(tokens).ToLower();
-                    }
-                }
-
-                first = GetFirst(tokens).ToLower();
-            }
-
-            Log(string.Format("FIELDS TERMINATED BY '{0}' ENCLOSED BY '{1}' ESCAPED BY '{2}' LINES TERMINATED BY '{3}' STARTING BY '{4}'",
-                    fields_terminated_by,
-                    fields_enclosed_by,
-                    fields_escaped_by,
-                    lines_terminated_by,
-                    lines_starting_by));
-
-            Log("remaining tokens:");
-            foreach (var token in tokens)
-            {
-                Log("\ttype: " + token.Type.ToString() + ", value: " + token.Text);
-            }
+            LoadDataParser parser = new LoadDataParser(tokens);
 
             // LOCAL INFILE request packet, send file name
             List<byte> fileNamePacket = new List<byte>();
             fileNamePacket.Add(0xfb); // [fb] LOCAL INFILE
-            fileNamePacket.AddRange(RestOfPacketString(fileName));
+            fileNamePacket.AddRange(RestOfPacketString(parser.file_name));
             SendPacket(fileNamePacket.ToArray());
 
             // Start receive file
             SetState(Phase.WaitingDataPhase);
+
+            Task t = Task.Run(() => RunDataLoad());
+            t.Wait();
+
+            byte[] file = HandleDataLoadResponse();
+
+            // Store process
+            string table_name = parser.table_name;
+
+            string file_string = RestOfPacketString_bytesToString(file);
+            //Log(file_string);
+
+            // separate lines
+            string[] lines = ParseLines(file_string, parser.lines_starting_by, parser.lines_terminated_by);
+            //Log(lines);
+            // separate columns
+
+            SendOkPacket();
+        }
+
+        /// <summary>
+        /// Separate lines
+        /// </summary>
+        /// <param name="file_string"></param>
+        /// <param name="lines_starting_by"></param>
+        /// <param name="lines_terminated_by"></param>
+        /// <returns></returns>
+        public static string[] ParseLines(string file_string, string lines_starting_by, string lines_terminated_by)
+        {
+            List<string> lines = new List<string>();
+            int lines_starting_by_length = lines_starting_by.Length;
+            int lines_terminated_by_length = lines_terminated_by.Length;
+            int file_string_length = file_string.Length;
+            string line;
+            int current = 0; // current index
+            int head1 = 0; // index of line begin
+            int head2 = 0; // index of line end
+            while (current < file_string_length)
+            {
+                if (lines_starting_by != "" && current + lines_starting_by_length <= file_string_length)
+                {
+                    string possible_lines_starting_by = file_string.Substring(current, lines_starting_by_length);
+                    if (possible_lines_starting_by == lines_starting_by)
+                    {
+                        head1 = current + lines_starting_by_length;
+                    }
+                }
+
+                if (current + lines_terminated_by_length <= file_string_length)
+                {
+                    string possible_lines_terminated_by = file_string.Substring(current, lines_terminated_by_length);
+                    if (possible_lines_terminated_by == lines_terminated_by)
+                    {
+                        head2 = current;
+                        line = file_string.Substring(head1, head2 - head1);
+                        lines.Add(line);
+                        head1 = current + lines_terminated_by_length;
+                    }
+                }
+                current += 1;
+            }
+            return lines.ToArray();
+        }
+
+        /// <summary>
+        /// Separate fields
+        /// </summary>
+        /// <param name="line_string"></param>
+        /// <param name="fields_terminated_by"></param>
+        /// <param name="fields_enclosed_by"></param>
+        /// <param name="fields_escaped_by"></param>
+        /// <returns></returns>
+        public static string[] ParseFields(string line_string, string fields_terminated_by, string fields_enclosed_by, string fields_escaped_by)
+        {
+            List<string> fields = new List<string>();
+            // TODO: not finish
+            return fields.ToArray();
         }
 
         private async Task RunDataLoad()
@@ -967,6 +934,8 @@ namespace MySqlServer
                 int sequence = FixedLengthInteger_toInt(SubArray(possibleLastPacket, 3, 1));
                 //Log("sequence: " + sequence);
                 //Log("length: " + packetLength);
+
+                // TODO: ssl not receive all packets, why???
                 if (packetLength == 0) // TODO: || sequence == lastSeq
                 {
                     Log("last packet sequence: " + sequence);
@@ -982,9 +951,10 @@ namespace MySqlServer
         /// <summary>
         /// Handle file data packet in load data statement
         /// </summary>
-        private void HandleDataLoadResponse()
+        /// <returns>file bytes</returns>
+        private byte[] HandleDataLoadResponse()
         {
-            Log("all file data received, File byte size: " + _FileBuffer.Count());
+            Log("all file data received, packets: " + _FileBuffer.Count());
 
             List<byte> allFileBytes = new List<byte>();
             List<byte> allFileBufferBytes = new List<byte>();
@@ -1031,44 +1001,9 @@ namespace MySqlServer
                 }
             }
 
-            WriteToFile(allFileBytes.ToArray(), "imptest-result.txt");
-            
-            //_FileStringBuffer = RestOfPacketString_bytesToString(allFileBytes.ToArray());
-            //string docPath = "../../../";
-            //using (StreamWriter outputFile = new StreamWriter(Path.Combine(docPath, "imptest-result.txt"), true))
-            //{
-            //    outputFile.WriteLine(_FileStringBuffer);
-            //}
-            //Log(_FileStringBuffer);
-            // store process
+            //WriteToFile(allFileBytes.ToArray(), "imptest-result.txt");
 
-            SendOkPacket();
-        }
-
-
-
-        private void WriteToFile(byte[] data, string name)
-        {
-            string fileName = "../../../"+name;
-
-            try
-            {
-                // Check if file already exists. If yes, delete it.     
-                if (File.Exists(fileName))
-                {
-                    File.Delete(fileName);
-                }
-
-                // Create a new file     
-                using (FileStream fs = File.Create(fileName))
-                {
-                    fs.Write(data, 0, data.Length);
-                }
-            }
-            catch (Exception Ex)
-            {
-                Console.WriteLine(Ex.ToString());
-            }
+            return allFileBytes.ToArray();
         }
 
         #region Generic Response Packets
@@ -1759,18 +1694,65 @@ namespace MySqlServer
             return tokens[0].Text;
         }
 
+        /// <summary>
+        /// Write bytes to file
+        /// </summary>
+        /// <param name="data"></param>
+        /// <param name="name"></param>
+        private void WriteToFile(byte[] data, string name)
+        {
+            string fileName = "../../../" + name;
+
+            try
+            {
+                // Check if file already exists. If yes, delete it.     
+                if (File.Exists(fileName))
+                {
+                    File.Delete(fileName);
+                }
+
+                // Create a new file     
+                using (FileStream fs = File.Create(fileName))
+                {
+                    fs.Write(data, 0, data.Length);
+                }
+            }
+            catch (Exception Ex)
+            {
+                Console.WriteLine(Ex.ToString());
+            }
+        }
+
+        /// <summary>
+        /// Log
+        /// </summary>
+        /// <param name="msg"></param>
         public void LogBasic(string msg)
         {
             string timeStr = DateTime.Now.Minute.ToString() + '.' + DateTime.Now.Second.ToString() + '.' + DateTime.Now.Millisecond.ToString();
             Console.WriteLine("[client session][" + timeStr + "]" + "[" + _IpPort + "] " + msg);
         }
 
+        /// <summary>
+        /// Log
+        /// </summary>
+        /// <param name="msg"></param>
         public void Log(string msg)
         {
             if (Debug)
             {
-                string timeStr = DateTime.Now.Minute.ToString() + '.' + DateTime.Now.Second.ToString() + '.' + DateTime.Now.Millisecond.ToString();
-                Console.WriteLine("[client session][" + timeStr + "]" + "[" + _IpPort + "] " + msg);
+                LogBasic(msg);
+            }
+        }
+
+        public void Log(object[] objs)
+        {
+            if (Debug)
+            {
+                foreach (var obj in objs)
+                {
+                    LogBasic(Convert.ToString(obj));
+                }
             }
         }
 

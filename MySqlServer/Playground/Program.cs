@@ -21,13 +21,39 @@ namespace Playground
 
             Console.WriteLine("Hello World finish");
 
+            string a = "\n";
+
+            string b = @"
+1,eweeeee
+2,wweqwe
+3,otoyrty
+4,88988uu
+";
+            Console.WriteLine("a length " + a.Length);
+            int current = 0;
+            while (current < b.Length)
+            {
+                string c = b.Substring(current, 1);
+                Console.WriteLine(c);
+                if (c == a)
+                {
+                    Console.WriteLine("hit");
+                }
+                current += 1;
+            }
+
+            GenerateFile();
+        }
+
+        static void GenerateFile()
+        {
             string docPath = "../../../";
 
             using (StreamWriter outputFile = new StreamWriter(Path.Combine(docPath, "imptest.txt"), true))
             {
                 for (int i = 0; i < 5000000; i++)
                 {
-                    string line = i.ToString() + "," + RandomString(10);
+                    string line = "lbegin" + "[" + i.ToString() + "] [" + RandomString(10) + "] lend";
                     outputFile.WriteLine(line);
                 }
             }
