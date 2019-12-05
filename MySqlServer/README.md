@@ -40,7 +40,7 @@ shell> openssl pkcs12 -export -out server-cert.p12 -in server-cert.pem -inkey se
 
 Export password is `pswd`
 
-## SQL Statements
+## Supported SQL Statements
 
 #### SELECT statement
 
