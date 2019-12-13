@@ -847,16 +847,22 @@ namespace MySqlServer
 
             byte[] file = HandleDataLoadResponse();
 
-            // Store process
+            // store process
             string table_name = parser.table_name;
 
             string file_string = RestOfPacketString_bytesToString(file);
             //Log(file_string);
 
             // separate lines
-            string[] lines = ParseLines(file_string, parser.lines_starting_by, parser.lines_terminated_by);
+            string[] lines = ParseLines(file_string, parser);
             //Log(lines);
             // separate columns
+            foreach(var line in lines)
+            {
+                string[] fields = ParseFields(line, parser);
+            }
+
+            // TODO: store process
 
             SendOkPacket();
         }
@@ -865,14 +871,13 @@ namespace MySqlServer
         /// Separate lines
         /// </summary>
         /// <param name="file_string"></param>
-        /// <param name="lines_starting_by"></param>
-        /// <param name="lines_terminated_by"></param>
-        /// <returns></returns>
-        public static string[] ParseLines(string file_string, string lines_starting_by, string lines_terminated_by)
+        /// <param name="parser"></param>
+        /// <returns>line array</returns>
+        public static string[] ParseLines(string file_string, LoadDataParser parser)
         {
             List<string> lines = new List<string>();
-            int lines_starting_by_length = lines_starting_by.Length;
-            int lines_terminated_by_length = lines_terminated_by.Length;
+            int lines_starting_by_length = parser.lines_starting_by.Length;
+            int lines_terminated_by_length = parser.lines_terminated_by.Length;
             int file_string_length = file_string.Length;
             string line;
             int current = 0; // current index
@@ -880,10 +885,10 @@ namespace MySqlServer
             int head2 = 0; // index of line end
             while (current < file_string_length)
             {
-                if (lines_starting_by != "" && current + lines_starting_by_length <= file_string_length)
+                if (parser.lines_starting_by != "" && current + lines_starting_by_length <= file_string_length)
                 {
                     string possible_lines_starting_by = file_string.Substring(current, lines_starting_by_length);
-                    if (possible_lines_starting_by == lines_starting_by)
+                    if (possible_lines_starting_by == parser.lines_starting_by)
                     {
                         head1 = current + lines_starting_by_length;
                     }
@@ -892,7 +897,7 @@ namespace MySqlServer
                 if (current + lines_terminated_by_length <= file_string_length)
                 {
                     string possible_lines_terminated_by = file_string.Substring(current, lines_terminated_by_length);
-                    if (possible_lines_terminated_by == lines_terminated_by)
+                    if (possible_lines_terminated_by == parser.lines_terminated_by)
                     {
                         head2 = current;
                         line = file_string.Substring(head1, head2 - head1);
@@ -909,15 +914,130 @@ namespace MySqlServer
         /// Separate fields
         /// </summary>
         /// <param name="line_string"></param>
-        /// <param name="fields_terminated_by"></param>
-        /// <param name="fields_enclosed_by"></param>
-        /// <param name="fields_escaped_by"></param>
-        /// <returns></returns>
-        public static string[] ParseFields(string line_string, string fields_terminated_by, string fields_enclosed_by, string fields_escaped_by)
+        /// <param name="parser"></param>
+        /// <returns>fields array</returns>
+        public static string[] ParseFields(string line_string, LoadDataParser parser)
         {
+            Console.WriteLine("in ParseFields");
             List<string> fields = new List<string>();
-            // TODO: not finish
+            int field_terminated_by_length = parser.fields_terminated_by.Length;
+            int line_string_length = line_string.Length;
+            int current = 0;
+            string field_string = "";
+            bool field_enclosed = true;
+
+            // have enclosed by
+            if (parser.fields_enclosed_by != "")
+            {
+                while (current < line_string_length)
+                {
+                    string current_char = line_string.Substring(current, 1);
+                    //Console.WriteLine(current_char);
+
+                    // check escaped by
+                    if (current_char == parser.fields_escaped_by)
+                    {
+                        current += 1;
+                        field_string += line_string.Substring(current, 1);
+                        current += 1;
+                        continue;
+                    }
+
+                    // check enclosed
+                    if (current_char == parser.fields_enclosed_by)
+                    {
+                        if (!field_enclosed)
+                        {
+                            fields.Add(field_string);
+                            field_string = "";
+                        }
+                        field_enclosed = !field_enclosed;
+                        current += 1;
+                        continue;
+                    }
+                    if (!field_enclosed)
+                    {
+                        field_string += current_char;
+                    }
+                    current += 1;
+                }
+
+            }
+            else
+            {
+                // no enclosed by
+                while (current < line_string_length)
+                {
+                    string current_char = line_string.Substring(current, 1);
+                    //Console.WriteLine(current_char);
+
+                    // check escaped by
+                    if (current_char == parser.fields_escaped_by)
+                    {
+                        current += 1;
+                        field_string += line_string.Substring(current, 1);
+                        current += 1;
+                        continue;
+                    }
+
+                    // check terminated
+                    if (current + field_terminated_by_length <= line_string_length)
+                    {
+                        string possible_terminated_by = line_string.Substring(current, field_terminated_by_length);
+                        if (possible_terminated_by == parser.fields_terminated_by)
+                        {
+                            fields.Add(field_string);
+                            field_string = "";
+                            current += field_terminated_by_length;
+                            continue;
+                        }
+                    }
+
+                    // other situation, field character
+                    field_string += current_char;
+                    current += 1;
+                }
+                // add last field
+                fields.Add(field_string);
+            }
+            foreach (var f in fields)
+            {
+                Console.WriteLine("field: "+f);
+            }
+
             return fields.ToArray();
+        }
+
+        public static string ProcessEnclosed(string field, LoadDataParser parser)
+        {
+            if (parser.fields_enclosed_by == "")
+            {
+                return field;
+            }
+
+            int current = 0;
+            bool field_enclosed = true;
+            string field_string = "";
+
+            while (current < field.Length)
+            {
+                string current_char = field.Substring(current, 1);
+
+                // check enclosed
+                if (current_char == parser.fields_enclosed_by)
+                {
+                    field_enclosed = !field_enclosed;
+                    current += 1;
+                    continue;
+                }
+                if (!field_enclosed)
+                {
+                    field_string += current_char;
+                }
+                current += 1;
+            }
+
+            return field_string;
         }
 
         private async Task RunDataLoad()

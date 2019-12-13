@@ -29,16 +29,16 @@ namespace ServerUnitTest
         [TestMethod]
         public void TestParserComplex()
         {
-            string query = "LOAD DATA LOCAL INFILE 'abc.txt' INTO TABLE imptest FIELDS TERMINATED BY 'aaa' OPTIONALLY ENCLOSED BY 'bbb' ESCAPED BY 'ccc' LINES STARTING BY 'eee' TERMINATED BY '\n';";
+            string query = "LOAD DATA LOCAL INFILE 'abc.txt' INTO TABLE imptest FIELDS TERMINATED BY 'aaa' OPTIONALLY ENCLOSED BY 'b' ESCAPED BY 'c' LINES STARTING BY 'eee' TERMINATED BY '\n';";
             List<TSQLToken> tokens = TSQLTokenizer.ParseTokens(query);
             LoadDataParser parser = new LoadDataParser(tokens);
 
             Assert.AreEqual("abc.txt", parser.file_name);
             Assert.AreEqual("imptest", parser.table_name);
             Assert.AreEqual("aaa", parser.fields_terminated_by);
-            Assert.AreEqual("bbb", parser.fields_enclosed_by);
+            Assert.AreEqual("b", parser.fields_enclosed_by);
             Assert.IsTrue(parser.fields_optionally_enclosed_by);
-            Assert.AreEqual("ccc", parser.fields_escaped_by);
+            Assert.AreEqual("c", parser.fields_escaped_by);
             Assert.AreEqual("eee", parser.lines_starting_by);
             Assert.AreEqual("\n", parser.lines_terminated_by);
         }

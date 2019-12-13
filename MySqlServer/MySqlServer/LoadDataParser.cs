@@ -8,13 +8,21 @@ namespace MySqlServer
     {
         public string file_name = "";
         public string table_name = "";
+
+        // fields
         public string fields_terminated_by = "\t";
         public string fields_enclosed_by = "";
         public bool fields_optionally_enclosed_by = false;
         public string fields_escaped_by = "\\";
 
+        // lines
         public string lines_starting_by = "";
         public string lines_terminated_by = "\n";
+
+        public LoadDataParser()
+        {
+
+        }
 
         public LoadDataParser(List<TSQLToken> tokens)
         {
@@ -63,6 +71,11 @@ namespace MySqlServer
                                 PopAndCheck(ref tokens, "enclosed");
                                 PopAndCheck(ref tokens, "by");
                                 fields_enclosed_by = tokens[0].Text[1..^1];
+                                // the FIELDS[OPTIONALLY] ENCLOSED BY and FIELDS ESCAPED BY values must be a single character.
+                                if (fields_escaped_by.Length > 1)
+                                {
+                                    throw new Exception("the FIELDS ENCLOSED BY {" + fields_enclosed_by + "} value must be a single character");
+                                }
                                 break;
                             case "optionally":
                                 PopAndCheck(ref tokens, "optionally");
@@ -75,6 +88,11 @@ namespace MySqlServer
                                 PopAndCheck(ref tokens, "escaped");
                                 PopAndCheck(ref tokens, "by");
                                 fields_escaped_by = tokens[0].Text[1..^1];
+                                // the FIELDS[OPTIONALLY] ENCLOSED BY and FIELDS ESCAPED BY values must be a single character.
+                                if (fields_escaped_by.Length > 1)
+                                {
+                                    throw new Exception("the FIELDS ESCAPED BY {" + fields_escaped_by + "} value must be a single character");
+                                }
                                 break;
                         }
                         tokens.RemoveAt(0);
@@ -115,8 +133,6 @@ namespace MySqlServer
 
                 first = GetFirst(tokens).ToLower();
             }
-
-            PopAndCheck(ref tokens, ";");
 
             Log(string.Format("FIELDS TERMINATED BY '{0}' {1} ENCLOSED BY '{2}' ESCAPED BY '{3}' LINES TERMINATED BY '{4}' STARTING BY '{5}'",
                     fields_terminated_by,
