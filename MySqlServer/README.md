@@ -60,6 +60,10 @@ will return
 2 rows in set, 28416 warnings (0.00 sec)
 ```
 
+#### INSERT statement
+
+
+
 #### LOAD DATA statement
 
 Test data import program, mysqlimport function
@@ -98,5 +102,14 @@ Example:
 ```mysql
 mysql> LOAD DATA LOCAL INFILE 'imptest.txt' INTO TABLE imptest FIELDS TERMINATED BY ','  LINES TERMINATED BY '\n';
 ```
+
+#### Using mysql in Batch Mode
+
+Support batch query, executing SQL Statements from a Text File
+
+Reference: [batch-mode](https://dev.mysql.com/doc/refman/5.7/en/batch-mode.html), [mysql-batch-commands](https://dev.mysql.com/doc/refman/5.7/en/mysql-batch-commands.html)
+
+#### DUMP, mysqldump — A Database Backup Program
+
 
 

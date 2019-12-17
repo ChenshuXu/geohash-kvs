@@ -24,11 +24,15 @@ namespace MySqlServer
             {
                 return _Tables[tableName];
             }
-            return null;
+            throw new Exception("table " + tableName + " not exist");
         }
 
         public void AddTable(Table t)
         {
+            if (_Tables.ContainsKey(t.TableName))
+            {
+                throw new Exception("already have table " + t.TableName + " exist");
+            }
             _Tables.Add(t.TableName, t);
             t.DatabaseName = _DataBaseName;
         }

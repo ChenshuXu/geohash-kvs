@@ -5,7 +5,7 @@ using MySqlServer;
 using MySql.Data;
 using MySql.Data.MySqlClient;
 
-namespace TestServer
+namespace TestLoadData
 {
     class Program
     {
@@ -19,12 +19,12 @@ namespace TestServer
                 3306,
                 certPath,
                 "pswd"
-                );
+            );
             server.Debug = true;
 
             Console.Write("Server starting...");
             server.StartAsync();
-            
+
 
             string connStr_SSL = "server=127.0.0.1;port=3306;uid=root;" +
                 "pwd=" + root_password + ";database=dummy;allowLoadLocalInfile=true";
@@ -46,53 +46,34 @@ namespace TestServer
             //Console.WriteLine("Press ENTER to start load data test with ssl");
             //Console.ReadLine();
             //TestLoadData(connStr_SSL);
-        }
 
-        /// <summary>
-        /// Test parameterized queries
-        /// </summary>
-        /// <param name="connStr"></param>
-        static void TestSelect(string connStr)
-        {
-            Console.WriteLine("TestSelect entering");
-            MySqlConnection conn = new MySqlConnection();
-            MySqlCommand cmd = new MySqlCommand();
-            conn.ConnectionString = connStr;
+            Console.WriteLine("Press ENTER to show the content in database");
+            Console.ReadLine();
 
-            try
+            using (MySqlConnection conn = new MySqlConnection(connStr_NoSSL))
             {
-                conn.Open();
-                cmd.Connection = conn;
-
-                cmd.CommandText = "SELECT * FROM dummy WHERE Col2 = @value;";
-                cmd.Prepare();
-
-                cmd.Parameters.AddWithValue("@value", 0);
-
-                MySqlDataReader rdr;
-                for (int i = 1; i <= 10; i++)
+                try
                 {
-                    cmd.Parameters["@value"].Value = i;
+                    Console.WriteLine("Connecting to MySQL...");
+                    conn.Open();
+                    Console.WriteLine("connected");
 
-                    //cmd.ExecuteNonQuery();
-
-                    rdr = cmd.ExecuteReader();
+                    string sql = "SELECT Col1, Col2 FROM dummy;";
+                    MySqlCommand cmd = new MySqlCommand(sql, conn);
+                    MySqlDataReader rdr = cmd.ExecuteReader();
                     while (rdr.Read())
                     {
                         Console.WriteLine(rdr[0] + " -- " + rdr[1]);
                     }
                     rdr.Close();
+                    conn.Close();
+                    Console.WriteLine("Done");
                 }
-
-                conn.Close();
-                Console.WriteLine("Done");
+                catch (MySqlException ex)
+                {
+                    Console.WriteLine("Error " + ex.Number + " has occurred: " + ex.Message);
+                }
             }
-            catch (MySqlException ex)
-            {
-                Console.WriteLine("Error " + ex.Number + " has occurred: " + ex.Message);
-            }
-
-            Console.WriteLine("TestSelect finished");
         }
 
         /// <summary>
@@ -117,7 +98,7 @@ namespace TestServer
                     conn.Open();
                     Console.WriteLine("connected");
 
-                    string sql = "LOAD DATA LOCAL INFILE '" + filePath + "' INTO TABLE imptest FIELDS TERMINATED BY ',' LINES TERMINATED BY '\n';";
+                    string sql = "LOAD DATA LOCAL INFILE '" + filePath + "' INTO TABLE dummy FIELDS TERMINATED BY ',' LINES TERMINATED BY '\n';";
                     MySqlCommand cmd = new MySqlCommand(sql, conn);
                     MySqlDataReader rdr = cmd.ExecuteReader();
                     while (rdr.Read())

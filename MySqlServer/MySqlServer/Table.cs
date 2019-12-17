@@ -18,8 +18,8 @@ namespace MySqlServer
 
         private string _TableName;
         private string _DatabaseName;
-        private List<Column> _Columns = new List<Column>();
-        private List<Row> _Rows = new List<Row>();
+        private List<Column> _Columns = new List<Column>(); // where stores the column information
+        private List<Row> _Rows = new List<Row>(); // where stores the values
 
         internal Column[] Columns
         {
@@ -41,6 +41,7 @@ namespace MySqlServer
         {
             _Columns.Add(col);
             col.TableName = _TableName;
+            Console.WriteLine(col.ColumnName);
         }
 
         public void AddColumns(Column[] cols)
@@ -51,21 +52,58 @@ namespace MySqlServer
             }
         }
 
-        public void AddRow(Row row)
+        public int InsertRow(Row row)
         {
-            _Rows.Add(row);
+            if (row._Values.Length == _Columns.Count)
+            {
+                _Rows.Add(row);
+                return 1;
+            }
+            return 0;
         }
 
-        public void AddRows(Row[] rows)
+        public int InsertRows(Row[] rows)
         {
+            int sum = 0;
             foreach (var row in rows)
             {
-                AddRow(row);
+                sum += InsertRow(row);
             }
+            return sum;
         }
 
         /// <summary>
-        /// 
+        /// Insert multiple rows
+        /// </summary>
+        /// <param name="values"></param>
+        /// <returns>effected row number</returns>
+        public int InsertRows(object[][] values)
+        {
+            int sum = 0;
+            foreach (object[] row in values)
+            {
+                sum += InsertRow(row);
+            }
+            return sum;
+        }
+
+        /// <summary>
+        /// Insert one row into table
+        /// </summary>
+        /// <param name="values"></param>
+        /// <returns>effected row number</returns>
+        public int InsertRow(object[] values)
+        {
+            if (values.Length == _Columns.Count)
+            {
+                _Rows.Add(new Row(values));
+                return 1;
+            }
+            return 0;
+        }
+
+        /// <summary>
+        /// Get all rows with given column names
         /// </summary>
         /// <param name="output_columns"></param>
         /// <returns></returns>
@@ -79,7 +117,7 @@ namespace MySqlServer
             // build up virtual table as result table
             Table virtualTable = new Table("virtual");
             virtualTable.AddColumns(GenerateColumns(real_column_index));
-            virtualTable.AddRows(GenerateRows(real_column_index));
+            virtualTable.InsertRows(GenerateRows(real_column_index));
 
             return virtualTable;
         }

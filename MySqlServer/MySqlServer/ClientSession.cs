@@ -623,15 +623,17 @@ namespace MySqlServer
             LogBasic("handle query: {" + query + "}");
             List<TSQLToken> tokens = TSQLTokenizer.ParseTokens(query);
 
-            Table returnTable = _DatabaseController.GetDatabase("dummy").GetTable("dummy");
+            Table resultTable = _DatabaseController.GetDatabase("dummy").GetTable("dummy");
 
             switch (tokens[0].Text.ToLower())
             {
                 case "select":
-                    returnTable = Select(tokens);
+                    resultTable = Select(tokens);
+                    SendQueryResponseResultset(resultTable);
                     break;
                 case "show":
-                    returnTable = Show(tokens);
+                    resultTable = Show(tokens);
+                    SendQueryResponseResultset(resultTable);
                     break;
                 case "set":
                     _DatabaseController.Set(tokens);
@@ -640,10 +642,20 @@ namespace MySqlServer
                 case "load":
                     LoadData(tokens);
                     return;
+                case "insert":
+                    break;
             }
+        }
 
-            Column[] h = returnTable.Columns;
-            Row[] r = returnTable.Rows;
+        /// <summary>
+        /// Send Query Response - Resultset
+        /// Reference: https://dev.mysql.com/doc/internals/en/com-query-response.html
+        /// </summary>
+        /// <param name="resultTable"></param>
+        private void SendQueryResponseResultset(Table resultTable)
+        {
+            Column[] h = resultTable.Columns;
+            Row[] r = resultTable.Rows;
 
             /*
             Log("Query results:");
@@ -684,7 +696,6 @@ namespace MySqlServer
 
             // send eof packet
             SendEofPacket();
-            return;
         }
 
         /// <summary>
@@ -698,7 +709,7 @@ namespace MySqlServer
             virtualTable.AddColumn(
                 new Column("TIMEDIFF(NOW(), UTC_TIMESTAMP())", ClientSession.ColumnType.MYSQL_TYPE_TIME)
             );
-            virtualTable.AddRow(
+            virtualTable.InsertRow(
                 new Row(
                     new Object[] { "08:00:00" }
                 )
@@ -849,6 +860,9 @@ namespace MySqlServer
 
             // store process
             string table_name = parser.table_name;
+            // check table name
+            Database db = _DatabaseController.GetDatabase(_ConnectedDB);
+            Table tb = db.GetTable(table_name);
 
             string file_string = RestOfPacketString_bytesToString(file);
             //Log(file_string);
@@ -856,19 +870,19 @@ namespace MySqlServer
             // separate lines
             string[] lines = ParseLines(file_string, parser);
             //Log(lines);
-            // separate columns
+            // separate columns and insert
+            int effected_rows = 0;
             foreach(var line in lines)
             {
                 string[] fields = ParseFields(line, parser);
+                effected_rows += tb.InsertRow(fields);
             }
-
-            // TODO: store process
-
-            SendOkPacket();
+            Log("effected rows: " + effected_rows);
+            SendOkPacket(effected_rows);
         }
 
         /// <summary>
-        /// Separate lines
+        /// Separate file to lines
         /// </summary>
         /// <param name="file_string"></param>
         /// <param name="parser"></param>
@@ -911,7 +925,7 @@ namespace MySqlServer
         }
 
         /// <summary>
-        /// Separate fields
+        /// Separate lines into fields
         /// </summary>
         /// <param name="line_string"></param>
         /// <param name="parser"></param>
@@ -1008,38 +1022,6 @@ namespace MySqlServer
             return fields.ToArray();
         }
 
-        public static string ProcessEnclosed(string field, LoadDataParser parser)
-        {
-            if (parser.fields_enclosed_by == "")
-            {
-                return field;
-            }
-
-            int current = 0;
-            bool field_enclosed = true;
-            string field_string = "";
-
-            while (current < field.Length)
-            {
-                string current_char = field.Substring(current, 1);
-
-                // check enclosed
-                if (current_char == parser.fields_enclosed_by)
-                {
-                    field_enclosed = !field_enclosed;
-                    current += 1;
-                    continue;
-                }
-                if (!field_enclosed)
-                {
-                    field_string += current_char;
-                }
-                current += 1;
-            }
-
-            return field_string;
-        }
-
         private async Task RunDataLoad()
         {
             int lastSeq = -1;
@@ -1124,6 +1106,16 @@ namespace MySqlServer
             //WriteToFile(allFileBytes.ToArray(), "imptest-result.txt");
 
             return allFileBytes.ToArray();
+        }
+
+        /// <summary>
+        /// Insert
+        /// Referene: https://dev.mysql.com/doc/refman/5.7/en/insert.html
+        /// </summary>
+        /// <param name="tokens"></param>
+        private void Insert(List<TSQLToken> tokens)
+        {
+            InsertParser parser = new InsertParser(tokens);
         }
 
         #region Generic Response Packets

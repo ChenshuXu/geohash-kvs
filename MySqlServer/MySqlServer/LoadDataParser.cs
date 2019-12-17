@@ -46,13 +46,13 @@ namespace MySqlServer
             tokens.RemoveAt(0);
 
             // can handle different orders of the keywords
-            string first = GetFirst(tokens).ToLower();
+            string first = GetFirstToken(tokens).ToLower();
             while (first == "fields" || first == "columns" || first == "lines")
             {
                 if (first == "fields" || first == "columns")
                 {
                     tokens.RemoveAt(0);
-                    string first_subclause = GetFirst(tokens).ToLower();
+                    string first_subclause = GetFirstToken(tokens).ToLower();
                     if (first_subclause != "terminated" && first_subclause != "enclosed" && first_subclause != "escaped" && first_subclause != "optionally")
                     {
                         throw new Exception("no subclauses after " + first);
@@ -96,13 +96,13 @@ namespace MySqlServer
                                 break;
                         }
                         tokens.RemoveAt(0);
-                        first_subclause = GetFirst(tokens).ToLower();
+                        first_subclause = GetFirstToken(tokens).ToLower();
                     }
                 }
                 else if (first == "lines")
                 {
                     PopAndCheck(ref tokens, "lines");
-                    string first_subclause = GetFirst(tokens).ToLower();
+                    string first_subclause = GetFirstToken(tokens).ToLower();
                     if (first_subclause != "starting" && first_subclause != "terminated")
                     {
                         throw new Exception("no subclauses after " + first);
@@ -127,11 +127,11 @@ namespace MySqlServer
                                 tokens.RemoveAt(0);
                                 break;
                         }
-                        first_subclause = GetFirst(tokens).ToLower();
+                        first_subclause = GetFirstToken(tokens).ToLower();
                     }
                 }
 
-                first = GetFirst(tokens).ToLower();
+                first = GetFirstToken(tokens).ToLower();
             }
 
             Log(string.Format("FIELDS TERMINATED BY '{0}' {1} ENCLOSED BY '{2}' ESCAPED BY '{3}' LINES TERMINATED BY '{4}' STARTING BY '{5}'",

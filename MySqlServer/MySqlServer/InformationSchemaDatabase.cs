@@ -20,8 +20,8 @@ namespace MySqlServer
                 new Column("@@version_comment")
             });
 
-            informationSchema.AddRow(
-                new Row( new Object[]
+            informationSchema.InsertRow(
+                new Object[]
                 {
                     4194304,
                     "utf8",
@@ -30,7 +30,7 @@ namespace MySqlServer
                     "ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION",
                     "2",
                     "MySQL Community Server (GPL)"
-                })
+                }
             );
 
 
@@ -58,15 +58,15 @@ namespace MySqlServer
                 string line = lines[i];
                 string[] columns = line.Split('|');
                 //Console.WriteLine("--{0}--", columns[1].Trim());
-                collation.AddRow(new Row(new Object[]
-                {
+                collation.InsertRow(
+                    new Object[] {
                     columns[1].Trim(),
                     columns[2].Trim(),
                     int.Parse(columns[3].Trim()),
                     columns[4].Trim(),
                     columns[5].Trim(),
                     int.Parse(columns[6].Trim())
-                }));
+                });
             }
 
         }

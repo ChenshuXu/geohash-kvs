@@ -38,7 +38,7 @@ namespace MySqlServer
                 new Column("Col2")
             });
 
-            dummyTable.AddRows(new Row[]
+            dummyTable.InsertRows(new Row[]
             {
                 new Row( new Object[] { 1, "ok"} ),
                 new Row( new Object[] { 2, "A"} )
@@ -65,7 +65,7 @@ namespace MySqlServer
             {
                 return _Users[userName].Password;
             }
-            return null;
+            throw new Exception("user name "+ userName +" not exist");
         }
 
         public Table Set(List<TSQLToken> tokens)

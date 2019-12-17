@@ -3,9 +3,9 @@ namespace MySqlServer
 {
     public class Row
     {
-        public Object[] _Values;
+        public object[] _Values;
 
-        public Row(Object[] values)
+        public Row(object[] values)
         {
             _Values = values;
         }
