@@ -49,8 +49,10 @@ namespace MySqlServer
                 new Column("Sortlen", ClientSession.ColumnType.MYSQL_TYPE_LONGLONG)
             });
 
-            string path = "/Users/chenshuxu/Projects/geohash-kvs/MySqlServer/MySqlServer/Resources/Collations.csv";
-            // string path = "../../../Resources/Collations.csv";
+            // path for mac os platform
+            string path = "../../../Resources/Collations.csv";
+            // path for windows platform
+            // string path = "..\\..\\..\\Resources\\Collations.csv";
             string[] lines = System.IO.File.ReadAllLines(path);
             //Console.WriteLine(lines[0]);
             for (int i = 0; i < lines.Length; i++)
