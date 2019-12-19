@@ -18,7 +18,7 @@ A web front end that use for demo. It request data from server and display the s
 
 3. Then start the webpage.
 
-   Use [VS code](https://code.visualstudio.com/), install [Live Server](https://marketplace.visualstudio.com/items?itemName=ritwickdey.LiveServer) extension to run the webpage locally. Other development tools such as [WebStorm](https://www.jetbrains.com/webstorm/) also works.
+   Use [VS code](https://code.visualstudio.com/), install [Live Server](https://marketplace.visualstudio.com/items?itemName=ritwickdey.LiveServer) extension to run the webpage locally. Other development tools such as [WebStorm](https://www.jetbrains.com/webstorm/) also works. Currently it using CDN version of dependencies. If want to install locally, can use npm to install them.
 
    ![screen2](screen2.jpg)
 
@@ -53,4 +53,5 @@ Start a search by click on the upper right icons then click on the map to define
 - [Leaflet](https://github.com/Leaflet/Leaflet)
 - [Leaflet.draw](https://github.com/Leaflet/Leaflet.draw)
 - [Mapbox](https://www.mapbox.com/)
+- [jQuery](https://jquery.com/)
 
