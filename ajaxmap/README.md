@@ -40,3 +40,17 @@ The bounding box is defined with current viewing area.
 
 ### Polygon Search (Combined Version)
 
+It combines all three type of search.
+
+Polygon search is searching coordinates in a certain polygon shape.
+
+Start a search by click on the upper right icons then click on the map to define vertices.
+
+![screen5](screen5.jpg)
+
+### Reference
+
+- [Leaflet](https://github.com/Leaflet/Leaflet)
+- [Leaflet.draw](https://github.com/Leaflet/Leaflet.draw)
+- [Mapbox](https://www.mapbox.com/)
+
