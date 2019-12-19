@@ -3,42 +3,28 @@ Simulates real MySQL server by responding the cilent with MySql client/server pr
 
 ## Basic connection
 
-Support multi client connections at the same time
+- Support multi client connections at the same time
 
-Support [The MySQL Command-Line Client](https://dev.mysql.com/doc/refman/5.7/en/mysql.html)
+- Support [The MySQL Command-Line Client](https://dev.mysql.com/doc/refman/5.7/en/mysql.html), example is [here](#command-line-client)
 
-Support some MySQL Connectors [Connector/NET](https://dev.mysql.com/doc/connector-net/en/)
+- Support some MySQL Connectors [Connector/NET](https://dev.mysql.com/doc/connector-net/en/)
 
-Connect to server with default root user in terminal 
-
-with SSL:
-
-```shell
-shell> mysql -h 127.0.0.1 -u root -pbG43JPmBrY92
-```
-or
-```shell
-shell> mysql --user=root --password=bG43JPmBrY92 --host=127.0.0.1
-```
-without SSL: 
-
-```shell
-shell> mysql --user=root --password=bG43JPmBrY92 --host=127.0.0.1 --ssl-mode=DISABLED
-```
 
 ## Certificate Instructions
 
-Create certificate with OpenSSL: [https://dev.mysql.com/doc/refman/8.0/en/creating-ssl-files-using-openssl.html](https://dev.mysql.com/doc/refman/8.0/en/creating-ssl-files-using-openssl.html)
+I have included the certificates in the solution
+
+To create certificate with OpenSSL: [https://dev.mysql.com/doc/refman/8.0/en/creating-ssl-files-using-openssl.html](https://dev.mysql.com/doc/refman/8.0/en/creating-ssl-files-using-openssl.html)
 
 This is a self-signed certificate and should NOT be used in production.
 
-Convert to p12 file: 
+After creating, convert to p12 file: 
 
 ```shell
 shell> openssl pkcs12 -export -out server-cert.p12 -in server-cert.pem -inkey server-key.pem
 ```
 
-Export password is `pswd`
+Export password as `pswd`
 
 ## Supported SQL Statements
 
@@ -117,7 +103,43 @@ shell> mysql mysql -h 127.0.0.1 -u root -pbG43JPmBrY92 < batch-file.sql
 
 
 
-#### DUMP, mysqldump — A Database Backup Program
+## Supported [Client Programs](https://dev.mysql.com/doc/refman/5.7/en/programs-client.html)
+
+#### <a id="#command-line-client">[mysql — The MySQL Command-Line Client](https://dev.mysql.com/doc/refman/5.7/en/mysql.html)</a>
+
+Connect to server with default root user in terminal 
+
+with SSL:
+
+```shell
+shell> mysql -h 127.0.0.1 -u root -pbG43JPmBrY92
+```
+
+or
+
+```shell
+shell> mysql --user=root --password=bG43JPmBrY92 --host=127.0.0.1
+```
+
+without SSL: 
+
+```shell
+shell> mysql --user=root --password=bG43JPmBrY92 --host=127.0.0.1 --ssl-mode=DISABLED
+```
+
+#### [mysqlimport — A Data Import Program](https://dev.mysql.com/doc/refman/5.7/en/mysqlimport.html)
+
+TODO
+
+#### [mysqldump — A Database Backup Program](https://dev.mysql.com/doc/refman/5.7/en/mysqldump.html)
+
+TODO
 
 
+
+## Basic logic
+
+
+
+## Unsolved problems
 
