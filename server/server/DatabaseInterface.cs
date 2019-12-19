@@ -41,8 +41,8 @@ namespace server
 
         void AddDataset1(DataBase database)
         {
-            //string path = "/Users/chenshuxu/Projects/geohash-kvs/server/server/Resources/Crimes_-_2019.csv";
-            string path = "C:\\Users\\xinlian01\\Documents\\GitHub\\geohash-kvs\\server\\server\\Resources\\Crimes_-_2019.csv";
+            string path = "/Users/chenshuxu/Projects/geohash-kvs/server/server/Resources/Crimes_-_2019.csv";
+            //string path = "C:\\Users\\xinlian01\\Documents\\GitHub\\geohash-kvs\\server\\server\\Resources\\Crimes_-_2019.csv";
             //string path = "../../../../Resources/Crimes_-_2019.csv";
             string[] lines = System.IO.File.ReadAllLines(path);
             for (int i = 1; i < lines.Length; i++)
