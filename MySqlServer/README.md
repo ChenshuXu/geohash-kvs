@@ -5,7 +5,7 @@ Simulates real MySQL server by responding the cilent with MySql client/server pr
 
 - Support multi client connections at the same time
 
-- Support [The MySQL Command-Line Client](https://dev.mysql.com/doc/refman/5.7/en/mysql.html), example is [here](#command-line-client)
+- Support [The MySQL Command-Line Client](https://dev.mysql.com/doc/refman/5.7/en/mysql.html), example is [here](#mysql--the-mysql-command-line-client)
 
 - Support some MySQL Connectors [Connector/NET](https://dev.mysql.com/doc/connector-net/en/)
 
@@ -105,7 +105,7 @@ shell> mysql mysql -h 127.0.0.1 -u root -pbG43JPmBrY92 < batch-file.sql
 
 ## Supported [Client Programs](https://dev.mysql.com/doc/refman/5.7/en/programs-client.html)
 
-#### <a id="#command-line-client">[mysql — The MySQL Command-Line Client](https://dev.mysql.com/doc/refman/5.7/en/mysql.html)</a>
+#### [mysql — The MySQL Command-Line Client](https://dev.mysql.com/doc/refman/5.7/en/mysql.html)
 
 Connect to server with default root user in terminal 
 
