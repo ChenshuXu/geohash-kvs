@@ -1,18 +1,63 @@
 # MySqlServer
-Simulates real MySQL server by responding the cilent with MySql client/server protocol. Reference MySQL server version 5.7.28
+This project simulates real MySQL server by responding the cilent with MySql client/server protocol. Reference MySQL server version 5.7.28.
 
-## Basic connection
+这个项目模拟了真实的MySql服务器，版本5.7.28
 
-- Support multi client connections at the same time
+It can handle listed statements and connections from different MySql clients.
 
-- Support [The MySQL Command-Line Client](https://dev.mysql.com/doc/refman/5.7/en/mysql.html), example is [here](#mysql--the-mysql-command-line-client)
+MySql connector能和这个服务端连接，运行一些[查询语句](#Supported-SQL-Statements)，具体看下面。
 
-- Support some MySQL Connectors [Connector/NET](https://dev.mysql.com/doc/connector-net/en/)
+## What's this project for?
+
+User can use MySql connectors and MySql statements to get data from our server
+
+用户能用各种MySql连接器和这个服务器连接。这个服务器能给MySql连接器正确的返回数据。
+
+比如，用户的代码中，原本是用MySql数据库储存坐标信息数据的，他一般会用如下的代码连接数据库和查询数据：
+
+Example code in user side:
+
+```c#
+using MySql.Data;
+using MySql.Data.MySqlClient;
+
+using (MySqlConnection conn = new MySqlConnection(connStr))
+{
+	try
+  {
+    // Connecting to MySQL
+    conn.Open();
+    // connected
+    string sql = "SELECT * FROM dummy;";
+    MySqlCommand cmd = new MySqlCommand(sql, conn);
+    MySqlDataReader rdr = cmd.ExecuteReader();
+
+    while (rdr.Read())
+    {
+      Console.WriteLine(rdr[0] + " -- " + rdr[1]);
+    }
+    rdr.Close();
+  }
+  catch (Exception ex)
+  {
+    // handle error
+  }
+  conn.Close();
+}
+```
+
+This project can also handle this connections and return data to the user.
+
+## Supported connectors
+
+- Support [The MySQL Command-Line Client](https://dev.mysql.com/doc/refman/5.7/en/mysql.html). Example is [here](#mysql--the-mysql-command-line-client)
+- Support [MySQL Connector/NET](https://dev.mysql.com/doc/connector-net/en/) used in C#. Example code is in test projects in the solution.
+- Haven't test with other [connectors](https://dev.mysql.com/doc/refman/5.7/en/connectors-apis.html).
 
 
 ## Certificate Instructions
 
-I have included the certificates in the solution
+If want to use SSL connections, must have a certificate. I have included the certificates in the solution.
 
 To create certificate with OpenSSL: [https://dev.mysql.com/doc/refman/8.0/en/creating-ssl-files-using-openssl.html](https://dev.mysql.com/doc/refman/8.0/en/creating-ssl-files-using-openssl.html)
 
@@ -98,7 +143,14 @@ Support batch query, executing SQL Statements from a Text File
 Reference: [batch-mode](https://dev.mysql.com/doc/refman/5.7/en/batch-mode.html), [mysql-batch-commands](https://dev.mysql.com/doc/refman/5.7/en/mysql-batch-commands.html)
 
 ```shell
-shell> mysql mysql -h 127.0.0.1 -u root -pbG43JPmBrY92 < batch-file.sql
+shell> mysql --user=root --password=bG43JPmBrY92 --host=127.0.0.1 --database=test --ssl-mode=DISABLED < batch-file.sql
+```
+
+If you are already running [**mysql**](https://dev.mysql.com/doc/refman/5.7/en/mysql.html), you can execute an SQL script file using the `source` command or `\.` command:
+
+```mysql
+mysql> source file_name
+mysql> \. file_name
 ```
 
 
@@ -139,7 +191,15 @@ TODO
 
 ## Basic logic
 
+TODO
 
+## Unsolved
 
-## Unsolved problems
+Handle: 
 
+```mysql
+select @@version_comment limit 1
+```
+
+- 定义查询geohash数据库的query statement
+- 和本项目连接到geohash数据库

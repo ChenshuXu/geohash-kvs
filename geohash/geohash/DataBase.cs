@@ -12,12 +12,19 @@ namespace geohash
     {
         // Key is encoded code
         // Value is an array of coordinates
+        // TODO: will store in a key-value database such as Redis, DynamoDB
         private IDictionary<string, List<Coordinates>> _Dict = new Dictionary<string, List<Coordinates>>();
         private List<string> _FullList = new List<string>();
         private int _NumberOfCharsStart = 1;
         private int _MaxCoordinatesInValue = 500;
         private int _MaxNumberOfChar = 9;
 
+        /// <summary>
+        /// Add coordinates to database(not in use)
+        /// </summary>
+        /// <param name="latitude"></param>
+        /// <param name="longitude"></param>
+        /// <param name="numberOfChars"></param>
         public void Add2( double latitude, double longitude, int numberOfChars = 1 )
         {
             // Get the key
@@ -70,6 +77,10 @@ namespace geohash
             }
         }
 
+        /// <summary>
+        /// Add coordinates to database(in use)
+        /// </summary>
+        /// <param name="coordinate"></param>
         public void Add(Coordinates coordinate)
         {
             double latitude = coordinate.Lat;
@@ -87,11 +98,13 @@ namespace geohash
                     _Dict.Add(key, value);
                     //Console.WriteLine("Add new key " + key);
                 }
+                // Second entry
                 else if (_Dict.ContainsKey(key) && _Dict[key].Count < _MaxCoordinatesInValue)
                 {
                     _Dict[key].Add(coordinate);
                     //Console.WriteLine("Add existent key " + key + ", " + Dict[key].Count);
                 }
+                // The deepest level
                 else if (numberOfChars == _MaxCoordinatesInValue)
                 {
                     _Dict[key].Add(coordinate);
@@ -100,10 +113,9 @@ namespace geohash
             }
         }
 
-
-        /**
-         * Store dictionary in a file
-         */
+        /// <summary>
+        /// Store dictionary in a file
+        /// </summary>
         public void Display()
         {
             using (StreamWriter sw = new StreamWriter("dict.csv"))
@@ -187,17 +199,15 @@ namespace geohash
             return json;
         }
 
-
-        /**
-        * Bounding Circle
-        *
-        * Return all the hashString covered by the circle in numberOfChars
-        * @param {double} lat
-        * @param {double} lon
-        * @param {double} radius in meters
-        * @param {int} numberOfChars
-        * @returns {string[]}
-        */
+        /// <summary>
+        /// Bounding Circle
+        /// Get all the hashString covered by the circle in numberOfChars
+        /// </summary>
+        /// <param name="latitude">latitude of center point</param>
+        /// <param name="longitude">longitude of center point</param>
+        /// <param name="radius">radius in meters</param>
+        /// <param name="numberOfChars">number of characters of hash string</param>
+        /// <returns>hash string array</returns>
         public static string[] Bcircle(double latitude, double longitude, double radius, int numberOfChars = 9)
         {
             var hashList = new List<string>();
@@ -285,9 +295,14 @@ namespace geohash
             return hashList.ToArray();
         }
 
-        /**
-         * returns all bounding boxes that covers the circle
-         */
+        /// <summary>
+        /// Get all bounding boxes that covers the circle
+        /// </summary>
+        /// <param name="latitude">latitude of center point</param>
+        /// <param name="longitude">longitude of center point</param>
+        /// <param name="radius">radius in meters</param>
+        /// <param name="numberOfChars">number of characters of hash string</param>
+        /// <returns>bounding box object array</returns>
         public static BoundingBox[] BcircleBoxes(double latitude, double longitude, double radius, int numberOfChars = 9)
         {
             var boxList = new List<BoundingBox>();
@@ -300,17 +315,16 @@ namespace geohash
             return boxList.ToArray();
         }
 
-        /**
-        * Bounding Circle Coordinates
-        *
-        * Return all coordinates covered by the circle in numberOfChars
-        * @param {double} lat
-        * @param {double} lon
-        * @param {double} radius in meters
-        * @param {int} numberOfChars
-        * @param {int} maximum number of coordinates returns
-        * @returns {Coordinates[]}
-        */
+        /// <summary>
+        /// Bounding Circle Coordinates
+        /// Get all coordinates covered by the circle in numberOfChars
+        /// </summary>
+        /// <param name="latitude">latitude of center point</param>
+        /// <param name="longitude">longitude of center point</param>
+        /// <param name="radius">radius in meters</param>
+        /// <param name="numberOfChars">number of characters of hash string</param>
+        /// <param name="limit">max number of coordinates return</param>
+        /// <returns>array of coordinate object</returns>
         public Coordinates[] BcircleCoordinates(double latitude, double longitude, double radius, int numberOfChars = 9, int limit = 0)
         {
             var coorList = new List<Coordinates>();
@@ -323,16 +337,12 @@ namespace geohash
 
                 if (BoxAllInCircleRange(box, latitude, longitude, radius))
                 {
-                    // All covered box
+                    // All covered by circle
                     coorList.AddRange(coors);
-                    //foreach (Coordinates c in coors)
-                    //{
-                    //    coorList.Add(c);
-                    //}
                 }
                 else
                 {
-                    // Not all covered box
+                    // Not all covered by circle
                     foreach (Coordinates c in coors)
                     {
                         if (Measure(c.Lat, c.Lon, latitude, longitude) <= radius)
@@ -358,17 +368,16 @@ namespace geohash
             return coorList.ToArray();
         }
 
-        /**
-        * Bounding Box Coordinates
-        *
-        * Return all coordinates covered by the box in numberOfChars
-        * @param {double} minLat
-        * @param {double} minLon
-        * @param {double} maxLat
-        * @param {double} maxLon
-        * @param {int} numberOfChars
-        * @returns {Coordinates[]}
-        */
+        /// <summary>
+        /// Bounding Box Coordinates
+        /// Get all coordinates covered by the box in numberOfChars
+        /// </summary>
+        /// <param name="minLat"></param>
+        /// <param name="minLon"></param>
+        /// <param name="maxLat"></param>
+        /// <param name="maxLon"></param>
+        /// <param name="numberOfChars"></param>
+        /// <returns>all coordinates covered by the box in numberOfChars</returns>
         public Coordinates[] BboxCoordinates(double minLat, double minLon, double maxLat, double maxLon, int numberOfChars = 9)
         {
             var coorList = new List<Coordinates>();
@@ -382,16 +391,12 @@ namespace geohash
 
                 if (BoxInBoxRange(box, minLat, minLon, maxLat, maxLon))
                 {
-                    // All covered box
+                    // All covered by box
                     coorList.AddRange(coors);
-                    //foreach (Coordinates c in coors)
-                    //{
-                    //    coorList.Add(c);
-                    //}
                 }
                 else
                 {
-                    // Not all covered box
+                    // Not all covered by box
                     foreach (Coordinates c in coors)
                     {
                         if (CoordinateInBoxRange(c, minLat, minLon, maxLat, maxLon))
@@ -405,9 +410,15 @@ namespace geohash
             return coorList.ToArray();
         }
 
-        /**
-         * returns all bounding boxes covered by box
-         */
+        /// <summary>
+        /// Get all bounding boxes covered by box
+        /// </summary>
+        /// <param name="minLat"></param>
+        /// <param name="minLon"></param>
+        /// <param name="maxLat"></param>
+        /// <param name="maxLon"></param>
+        /// <param name="numberOfChars"></param>
+        /// <returns></returns>
         public static BoundingBox[] BboxBoxes(double minLat, double minLon, double maxLat, double maxLon, int numberOfChars = 9)
         {
             
@@ -421,10 +432,11 @@ namespace geohash
             return boxList.ToArray();
         }
 
-        /**
-         * Get all coordinates in all levels
-         * 
-         */
+        /// <summary>
+        /// Get all coordinates in all levels
+        /// </summary>
+        /// <param name="hash"></param>
+        /// <returns></returns>
         private Coordinates[] GetCoordinatesAll(string hash)
         {
             var coorList = new List<Coordinates>();
@@ -447,16 +459,16 @@ namespace geohash
                 }
             }
 
-            //TODO: distince is not good if there are some real duplicates in database
-            return coorList.Distinct().ToArray();
+            //TODO: distinct is not good if there are some real duplicates in database
+            //return coorList.Distinct().ToArray();
+            return coorList.ToArray();
         }
 
-        /**
-         * Get all coordinates in this level only
-         *
-         * Return coordinates array
-         * @param {string} hash of the box
-         */
+        /// <summary>
+        /// Get all coordinates in this level only
+        /// </summary>
+        /// <param name="hash">hash of the box</param>
+        /// <returns>coordinates array</returns>
         private Coordinates[] GetCoordinates(string hash)
         {
             if (_Dict.ContainsKey(hash))
@@ -466,18 +478,17 @@ namespace geohash
             return new Coordinates[] { };
         }
 
-        /**
-         * Convert meters to coordinate in direction
-         *
-         * Return coordinates
-         * @param {double} lat
-         * @param {double} lon
-         * @param {double} d (distance in meter)
-         * @param {double} bearing (clockwise from north in degree)
-         */
+        /// <summary>
+        /// Convert meters to coordinate in direction
+        /// </summary>
+        /// <param name="lat"></param>
+        /// <param name="lon"></param>
+        /// <param name="distance">distance in meter</param>
+        /// <param name="brng">bearing (clockwise from north in degree)</param>
+        /// <returns></returns>
         public static Coordinates DistanceToPoint(double lat, double lon, double distance, double brng)
         {
-            double radius = 6371000;
+            double radius = 6371000; // radius of earth
 
             double δ = distance / radius; // angular distance in radians
             double θ = brng * Math.PI / 180;
@@ -496,10 +507,14 @@ namespace geohash
             return new NGeoHash.Coordinates { Lat = lat3, Lon = lon3 };
         }
 
-        /**
-         * Measure the distance between two points
-         * Return distance in meters
-         */
+        /// <summary>
+        /// Measure the distance between two points
+        /// </summary>
+        /// <param name="lat1"></param>
+        /// <param name="lon1"></param>
+        /// <param name="lat2"></param>
+        /// <param name="lon2"></param>
+        /// <returns>distance in meters</returns>
         public static double Measure( double lat1, double lon1, double lat2, double lon2 )
         {
             var R = 6371; // Radius of earth in KM
@@ -513,24 +528,33 @@ namespace geohash
             return Math.Abs(d * 1000.0); // meters
         }
 
-        /**
-         * Check box overlaps with circle
-         * Check the four corners of the box
-         */
-        public static Boolean BoxInCircleRange(BoundingBox box, double lat1, double lon1, double distance )
+        /// <summary>
+        /// Check box overlaps with circle
+        /// It's not perfect, only check the four corners of the box
+        /// </summary>
+        /// <param name="box"></param>
+        /// <param name="lat"></param>
+        /// <param name="lon"></param>
+        /// <param name="distance"></param>
+        /// <returns></returns>
+        public static Boolean BoxInCircleRange(BoundingBox box, double lat, double lon, double distance )
         {
             // 4 rectangle vertex in circle
-            double d1 = Measure( box.Maximum.Lat, box.Maximum.Lon, lat1, lon1 );
-            double d2 = Measure( box.Maximum.Lat, box.Minimum.Lon, lat1, lon1 );
-            double d3 = Measure( box.Minimum.Lat, box.Maximum.Lon, lat1, lon1 );
-            double d4 = Measure( box.Minimum.Lat, box.Minimum.Lon, lat1, lon1 );
+            double d1 = Measure( box.Maximum.Lat, box.Maximum.Lon, lat, lon );
+            double d2 = Measure( box.Maximum.Lat, box.Minimum.Lon, lat, lon );
+            double d3 = Measure( box.Minimum.Lat, box.Maximum.Lon, lat, lon );
+            double d4 = Measure( box.Minimum.Lat, box.Minimum.Lon, lat, lon );
             return d1 <= distance || d2 <= distance || d3 <= distance || d4 <= distance;
         }
 
-        /**
-         * Check box all covered by circle
-         * Check the four corners of the box
-         */
+        /// <summary>
+        /// Check box all covered by circle
+        /// </summary>
+        /// <param name="box"></param>
+        /// <param name="lat1"></param>
+        /// <param name="lon1"></param>
+        /// <param name="distance"></param>
+        /// <returns></returns>
         public static Boolean BoxAllInCircleRange(BoundingBox box, double lat1, double lon1, double distance)
         {
             // 4 rectangle vertex in circle
@@ -541,26 +565,39 @@ namespace geohash
             return d1 <= distance && d2 <= distance && d3 <= distance && d4 <= distance;
         }
 
-        /**
-         * Check box overlaps with box
-         * Check the four corners of the box
-         */
+        /// <summary>
+        /// Check box overlaps with box
+        /// </summary>
+        /// <param name="box"></param>
+        /// <param name="minLat"></param>
+        /// <param name="minLon"></param>
+        /// <param name="maxLat"></param>
+        /// <param name="maxLon"></param>
+        /// <returns></returns>
         public static Boolean BoxInBoxRange(BoundingBox box, double minLat, double minLon, double maxLat, double maxLon)
         {
             return box.Minimum.Lat >= minLat && box.Minimum.Lon >= minLon && box.Maximum.Lat <= maxLat && box.Maximum.Lon <= maxLon;
         }
 
-        /**
-         * Check coordinate inside box
-         */
+        /// <summary>
+        /// Check coordinate inside box
+        /// </summary>
+        /// <param name="c">coordinate</param>
+        /// <param name="minLat"></param>
+        /// <param name="minLon"></param>
+        /// <param name="maxLat"></param>
+        /// <param name="maxLon"></param>
+        /// <returns></returns>
         public static Boolean CoordinateInBoxRange(Coordinates c, double minLat, double minLon, double maxLat, double maxLon)
         {
             return c.Lat >= minLat && c.Lon >= minLon && c.Lat <= maxLat && c.Lon <= maxLon;
         }
 
-        /**
-        * Find the length of the shortest side of a box
-        */
+        /// <summary>
+        /// Find the length of the shortest side of a box
+        /// </summary>
+        /// <param name="hash"></param>
+        /// <returns>length in meter</returns>
         public static double FindMinSideLength(string hash)
         {
             BoundingBox box = GeoHash.DecodeBbox(hash);
@@ -572,15 +609,13 @@ namespace geohash
             return Math.Min(Math.Min(west, east), Math.Min(north, south));
         }
 
-
-        /**
-        * Bounding Polygon
-        *
-        * Return all the hashString covered by the polygon in numberOfChars
-        * @param {Coordinates[]}  
-        * @param {int} numberOfChars
-        * @returns {string[]}
-        */
+        /// <summary>
+        /// Bounding Polygon
+        /// Get all the hashString covered by the polygon in numberOfChars
+        /// </summary>
+        /// <param name="polygon">array of coordinates describes the polygon</param>
+        /// <param name="numberOfChars"></param>
+        /// <returns>array of hash string</returns>
         public static string[] Bpolygon(Coordinates[] polygon, int numberOfChars = 9)
         {
             var hashList = new List<string>();
@@ -598,7 +633,7 @@ namespace geohash
             foreach (string hash in bboxHash)
             {
                 BoundingBox box = GeoHash.DecodeBbox(hash);
-                if (BoxInPolygon(box, polygon))
+                if (BoxOverlapPolygon(box, polygon))
                 {
                     hashList.Add(hash);
                 }
@@ -606,9 +641,12 @@ namespace geohash
             return hashList.ToArray();
         }
 
-        /**
-         * Returns all bounding boxes covered by polygon in numberOfChars
-         */
+        /// <summary>
+        /// Get all bounding boxes covered by polygon in numberOfChars
+        /// </summary>
+        /// <param name="polygon">array of coordinates describes the polygon</param>
+        /// <param name="numberOfChars"></param>
+        /// <returns>array of hash string</returns>
         public static BoundingBox[] BpolygonBoxes(Coordinates[] polygon, int numberOfChars = 9)
         {
             var boxList = new List<BoundingBox>();
@@ -619,15 +657,14 @@ namespace geohash
             }
             return boxList.ToArray();
         }
-
-        /**
-        * Bounding polygon coordinates
-        *
-        * Return all the coordinates covered by the polygon
-        * @param {Coordinates[]} list of vertex coordinates of the polygon
-        * @param {int} numberOfChars
-        * @returns {Coordinates[]}
-        */
+        
+        /// <summary>
+        /// Bounding polygon coordinates
+        /// Get all the coordinates covered by the polygon
+        /// </summary>
+        /// <param name="polygon">list of vertex coordinates of the polygon</param>
+        /// <param name="numberOfChars"></param>
+        /// <returns></returns>
         public Coordinates[] BpolygonCoordinates(Coordinates[] polygon, int numberOfChars = 9)
         {
             List<Coordinates> coorList = new List<Coordinates>();
@@ -678,12 +715,15 @@ namespace geohash
             return json;
         }
 
-        /**
-         * Check if box overlap with polygon
-         */
-        public static Boolean BoxInPolygon(BoundingBox box, Coordinates[] polygon)
+        /// <summary>
+        /// Check if box overlap with polygon
+        /// </summary>
+        /// <param name="box"></param>
+        /// <param name="polygon"></param>
+        /// <returns></returns>
+        public static Boolean BoxOverlapPolygon(BoundingBox box, Coordinates[] polygon)
         {
-            Coordinates[] boxVertices = new Coordinates[] {
+            Coordinates[] boxVertices = {
                 box.Maximum,
                 new Coordinates{ Lat=box.Maximum.Lat, Lon=box.Minimum.Lon },
                 box.Minimum,
@@ -724,6 +764,12 @@ namespace geohash
             return false;
         }
 
+        /// <summary>
+        /// Check if a point is inside the polygon
+        /// </summary>
+        /// <param name="point"></param>
+        /// <param name="polygon"></param>
+        /// <returns></returns>
         public static Boolean PointInPolygon(Coordinates point, Coordinates[] polygon)
         {
             // There must be at least 3 vertices in polygon

@@ -6,10 +6,11 @@ namespace MySqlServer
     {
         static void Main(string[] args)
         {
+            string certPath = "../../../certs/server-cert.p12";
             Server server = new Server(
                 "127.0.0.1",
                 3306,
-                "../../../certs/server-cert.p12",
+                certPath,
                 "pswd"
                 );
             server.Debug = true;
